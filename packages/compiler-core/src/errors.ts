@@ -58,6 +58,8 @@ export const enum ErrorCodes {
   NESTED_COMMENT,
   UNEXPECTED_CHARACTER_IN_ATTRIBUTE_NAME,
   UNEXPECTED_CHARACTER_IN_UNQUOTED_ATTRIBUTE_VALUE,
+
+  // 缺少属性名称
   UNEXPECTED_EQUALS_SIGN_BEFORE_ATTRIBUTE_NAME,
   UNEXPECTED_NULL_CHARACTER,
   UNEXPECTED_QUESTION_MARK_INSTEAD_OF_TAG_NAME,
@@ -66,6 +68,8 @@ export const enum ErrorCodes {
   // Vue-specific parse errors
   X_INVALID_END_TAG,
   X_MISSING_END_TAG,
+
+  // 未找到插值表达式结束标签
   X_MISSING_INTERPOLATION_END,
   X_MISSING_DYNAMIC_DIRECTIVE_ARGUMENT_END,
 
@@ -133,6 +137,8 @@ export const errorMessages: Record<ErrorCodes, string> = {
   [ErrorCodes.UNEXPECTED_QUESTION_MARK_INSTEAD_OF_TAG_NAME]:
     "'<?' is allowed only in XML context.",
   [ErrorCodes.UNEXPECTED_NULL_CHARACTER]: `Unexpected null cahracter.`,
+
+  // 不该出现在标签中的单个斜线
   [ErrorCodes.UNEXPECTED_SOLIDUS_IN_TAG]: "Illegal '/' in tags.",
 
   // Vue-specific parse errors

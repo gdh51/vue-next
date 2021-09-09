@@ -35,27 +35,38 @@ export const transformOn: DirectiveTransform = (
   augmentor
 ) => {
   const { loc, modifiers, arg } = dir as VOnDirectiveNode
+
+  // 无表达式
   if (!dir.exp && !modifiers.length) {
     context.onError(createCompilerError(ErrorCodes.X_V_ON_NO_EXPRESSION, loc))
   }
+
   let eventName: ExpressionNode
+
   if (arg.type === NodeTypes.SIMPLE_EXPRESSION) {
+    // 静态事件名称
     if (arg.isStatic) {
       const rawName = arg.content
       // for all event listeners, auto convert it to camelCase. See issue #2249
       eventName = createSimpleExpression(
+        // 将事件名称转化为onAb
         toHandlerKey(camelize(rawName)),
         true,
         arg.loc
       )
+
+      // 动态事件名称
     } else {
       // #2388
+      // 创建复合表达式
       eventName = createCompoundExpression([
         `${context.helperString(TO_HANDLER_KEY)}(`,
         arg,
         `)`
       ])
     }
+
+    // 已为复合表达式
   } else {
     // already a compound expression.
     eventName = arg
@@ -64,19 +75,28 @@ export const transformOn: DirectiveTransform = (
   }
 
   // handler processing
+  // 处理绑定事件
   let exp: ExpressionNode | undefined = dir.exp as
     | SimpleExpressionNode
     | undefined
+
+  // 空表达式直接置空
   if (exp && !exp.content.trim()) {
     exp = undefined
   }
   let shouldCache: boolean = context.cacheHandlers && !exp && !context.inVOnce
   if (exp) {
+    // 是否为a.b表达式
     const isMemberExp = isMemberExpression(exp.content)
+
+    // 不是函数和成员访问表达式
     const isInlineStatement = !(isMemberExp || fnExpRE.test(exp.content))
+
+    // 是否有多个语句
     const hasMultipleStatements = exp.content.includes(`;`)
 
     // process the expression since it's been skipped
+    // 非浏览器
     if (!__BROWSER__ && context.prefixIdentifiers) {
       isInlineStatement && context.addIdentifiers(`$event`)
       exp = dir.exp = processExpression(
@@ -117,6 +137,7 @@ export const transformOn: DirectiveTransform = (
       }
     }
 
+    // dev模式
     if (__DEV__ && __BROWSER__) {
       validateBrowserExpression(
         exp as SimpleExpressionNode,
@@ -126,15 +147,18 @@ export const transformOn: DirectiveTransform = (
       )
     }
 
+    // 内联表达式或成员访问表达式时
     if (isInlineStatement || (shouldCache && isMemberExp)) {
       // wrap inline statement in a function expression
       exp = createCompoundExpression([
         `${
           isInlineStatement
-            ? !__BROWSER__ && context.isTS
+            ? // 内联表达式包裹在函数内
+              !__BROWSER__ && context.isTS
               ? `($event: any)`
               : `$event`
-            : `${
+            : // 普通表达式直接调用
+              `${
                 !__BROWSER__ && context.isTS ? `\n//@ts-ignore\n` : ``
               }(...args)`
         } => ${hasMultipleStatements ? `{` : `(`}`,
@@ -144,6 +168,7 @@ export const transformOn: DirectiveTransform = (
     }
   }
 
+  // 包装为最终的ast
   let ret: DirectiveTransformResult = {
     props: [
       createObjectProperty(
@@ -154,6 +179,7 @@ export const transformOn: DirectiveTransform = (
   }
 
   // apply extended compiler augmentor
+  // 应用额外的编译处理
   if (augmentor) {
     ret = augmentor(ret)
   }

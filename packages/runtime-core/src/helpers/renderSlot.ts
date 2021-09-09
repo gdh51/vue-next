@@ -29,6 +29,7 @@ export function renderSlot(
   fallback?: () => VNodeArrayChildren,
   noSlotted?: boolean
 ): VNode {
+  // 无视
   if (currentRenderingInstance!.isCE) {
     return createVNode(
       'slot',
@@ -37,6 +38,7 @@ export function renderSlot(
     )
   }
 
+  // 获取对应插槽的函数
   let slot = slots[name]
 
   if (__DEV__ && slot && slot.length > 1) {

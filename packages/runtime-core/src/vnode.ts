@@ -214,11 +214,15 @@ export interface VNode<
 // can divide a template into nested blocks, and within each block the node
 // structure would be stable. This allows us to skip most children diffing
 // and only worry about the dynamic nodes (indicated by patch flags).
+// blockStack，存储当前要进行block追踪的数组
 export const blockStack: (VNode[] | null)[] = []
+
+// 当前正在进行block追踪的数组
 export let currentBlock: VNode[] | null = null
 
 /**
  * Open a block.
+ * 创建一个Block
  * This must be called before `createBlock`. It cannot be part of `createBlock`
  * because the children of the block are evaluated before `createBlock` itself
  * is called. The generated code typically looks like this:
@@ -270,12 +274,17 @@ export function setBlockTracking(value: number) {
 
 function setupBlock(vnode: VNode) {
   // save current block children on the block vnode
+  // 将当前block存储在blockVnode上
   vnode.dynamicChildren =
     isBlockTreeEnabled > 0 ? currentBlock || (EMPTY_ARR as any) : null
+
   // close block
+  // 闭合当前block
   closeBlock()
+
   // a block is always going to be patched, so track it as a child of its
   // parent block
+  // 一个block总会更新，所以将其收集到其父级block中
   if (isBlockTreeEnabled > 0 && currentBlock) {
     currentBlock.push(vnode)
   }
@@ -294,6 +303,7 @@ export function createElementBlock(
   shapeFlag?: number
 ) {
   return setupBlock(
+    // 创建当前元素的VNode节点，并加入当前父级block
     createBaseVNode(
       type,
       props,
@@ -310,6 +320,7 @@ export function createElementBlock(
  * Create a block root vnode. Takes the same exact arguments as `createVNode`.
  * A block root keeps track of dynamic nodes within the block in the
  * `dynamicChildren` array.
+ * Block会追踪动态数组中的节点变化
  *
  * @private
  */
@@ -337,6 +348,7 @@ export function isVNode(value: any): value is VNode {
 }
 
 export function isSameVNodeType(n1: VNode, n2: VNode): boolean {
+  // 热更新，无视
   if (
     __DEV__ &&
     n2.shapeFlag & ShapeFlags.COMPONENT &&
@@ -345,6 +357,8 @@ export function isSameVNodeType(n1: VNode, n2: VNode): boolean {
     // HMR only: if the component has been hot-updated, force a reload.
     return false
   }
+
+  // 必须要type和key一致
   return n1.type === n2.type && n1.key === n2.key
 }
 
@@ -390,6 +404,7 @@ const normalizeRef = ({ ref }: VNodeProps): VNodeNormalizedRefAtom | null => {
   ) as any
 }
 
+// 创建普通Vnode节点
 function createBaseVNode(
   type: VNodeTypes | ClassComponent | typeof NULL_DYNAMIC_COMPONENT,
   props: (Data & VNodeProps) | null = null,
@@ -421,7 +436,11 @@ function createBaseVNode(
     target: null,
     targetAnchor: null,
     staticCount: 0,
+
+    // 当前节点的shape
     shapeFlag,
+
+    // 更新patchFlag位图
     patchFlag,
     dynamicProps,
     dynamicChildren: null,
@@ -434,6 +453,8 @@ function createBaseVNode(
     if (__FEATURE_SUSPENSE__ && shapeFlag & ShapeFlags.SUSPENSE) {
       ;(type as typeof SuspenseImpl).normalize(vnode)
     }
+
+    // 标记当前子节点的Shape到当前节点
   } else if (children) {
     // compiled element vnode - if children is passed, only possible types are
     // string or Array.
@@ -448,13 +469,17 @@ function createBaseVNode(
   }
 
   // track vnode for block tree
+  // 符合条件时，将当前节点加入block tree中
   if (
     isBlockTreeEnabled > 0 &&
     // avoid a block node from tracking itself
+    // 避免block节点追踪自己
     !isBlockNode &&
     // has current parent block
+    // 具有父级block
     currentBlock &&
     // presence of a patch flag indicates this node needs patching on updates.
+    // 存在patchFlag则说明当前节点需要在patching中更新
     // component nodes also should always be patched, because even if the
     // component doesn't need to update, it needs to persist the instance on to
     // the next vnode so that it can be properly unmounted later.
@@ -481,6 +506,7 @@ export const createVNode = (
   __DEV__ ? createVNodeWithArgsTransform : _createVNode
 ) as typeof _createVNode
 
+// 创建VNode节点
 function _createVNode(
   type: VNodeTypes | ClassComponent | typeof NULL_DYNAMIC_COMPONENT,
   props: (Data & VNodeProps) | null = null,
@@ -489,17 +515,23 @@ function _createVNode(
   dynamicProps: string[] | null = null,
   isBlockNode = false
 ): VNode {
+  // 是否为动态组件或根本没传入VNode类型
   if (!type || type === NULL_DYNAMIC_COMPONENT) {
+    // 未传入VNode类型时，报错
     if (__DEV__ && !type) {
       warn(`Invalid vnode type when creating vnode: ${type}.`)
     }
+
+    // fallback设置类型为注释节点
     type = Comment
   }
 
+  // 当前类型已为VNode节点时
   if (isVNode(type)) {
     // createVNode receiving an existing vnode. This happens in cases like
     // <component :is="vnode"/>
     // #2078 make sure to merge refs during the clone instead of overwriting it
+    // 基于已有节点生成时，复制该节点并合并引用
     const cloned = cloneVNode(type, props, true /* mergeRef: true */)
     if (children) {
       normalizeChildren(cloned, children)
@@ -508,6 +540,7 @@ function _createVNode(
   }
 
   // class component normalization.
+  // 当为class类型的组件时(不推荐，请不要带入react习惯)
   if (isClassComponent(type)) {
     type = type.__vccOpts
   }
@@ -518,24 +551,33 @@ function _createVNode(
   }
 
   // class & style normalization.
+  // 初始化class和style
   if (props) {
     // for reactive or proxy objects, we need to clone it to enable mutation.
+    // 对于响应式对象或代理对象，我们需要去克隆它来进行突变
     props = guardReactiveProps(props)!
     let { class: klass, style } = props
+
+    // 处理非字符串形式的class，将它们统一处理为字符串后返回
     if (klass && !isString(klass)) {
       props.class = normalizeClass(klass)
     }
+
+    // 处理对象形式style
     if (isObject(style)) {
       // reactive state objects need to be cloned since they are likely to be
       // mutated
       if (isProxy(style) && !isArray(style)) {
         style = extend({}, style)
       }
+
+      // 将style处理为对象形式
       props.style = normalizeStyle(style)
     }
   }
 
   // encode the vnode type information into a bitmap
+  // 将VNode的类型编码为位图
   const shapeFlag = isString(type)
     ? ShapeFlags.ELEMENT
     : __FEATURE_SUSPENSE__ && isSuspense(type)
@@ -548,6 +590,7 @@ function _createVNode(
     ? ShapeFlags.FUNCTIONAL_COMPONENT
     : 0
 
+  // 如果一个组件配置对象已为一个响应式对象，则报错
   if (__DEV__ && shapeFlag & ShapeFlags.STATEFUL_COMPONENT && isProxy(type)) {
     type = toRaw(type)
     warn(
@@ -560,6 +603,7 @@ function _createVNode(
     )
   }
 
+  // 创建并返回VNode
   return createBaseVNode(
     type,
     props,
@@ -696,9 +740,12 @@ export function createCommentVNode(
 }
 
 export function normalizeVNode(child: VNodeChild): VNode {
+  // 注释节点返回
   if (child == null || typeof child === 'boolean') {
     // empty placeholder
     return createVNode(Comment)
+
+    // 返回一个数组片段时，创建片段节点
   } else if (isArray(child)) {
     // fragment
     return createVNode(
@@ -707,10 +754,14 @@ export function normalizeVNode(child: VNodeChild): VNode {
       // #3666, avoid reference pollution when reusing vnode
       child.slice()
     )
+
+    // 单个节点
   } else if (typeof child === 'object') {
     // already vnode, this should be the most common since compiled templates
     // always produce all-vnode children arrays
     return cloneIfMounted(child)
+
+    // 返回单个文本节点
   } else {
     // strings and numbers
     return createVNode(Text, null, String(child))
@@ -722,30 +773,53 @@ export function cloneIfMounted(child: VNode): VNode {
   return child.el === null || child.memo ? child : cloneVNode(child)
 }
 
+// 计算当前节点的子节点信息，表面意义的子节点比如<a><b></b></a>，那么b为子节点
+// 将其记录在当前节点的bitmap上
 export function normalizeChildren(vnode: VNode, children: unknown) {
   let type = 0
+
+  // 获取VNode类型
   const { shapeFlag } = vnode
+
+  // 当前节点无子节点时，不做任何信息记录
   if (children == null) {
     children = null
+
+    // 数组形式的子节点时
   } else if (isArray(children)) {
+    // 为其新增记录为子节点数组
     type = ShapeFlags.ARRAY_CHILDREN
+
+    // 当子节点为对象时，则为具有插槽内容的
   } else if (typeof children === 'object') {
     if (shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.TELEPORT)) {
       // Normalize slot to plain children for plain element and Teleport
+      // 标准化插槽的子元素数组
       const slot = (children as any).default
+
       if (slot) {
         // _c marker is added by withCtx() indicating this is a compiled slot
         slot._c && (slot._d = false)
+
+        // 将其作为子节点递归进行标准化
         normalizeChildren(vnode, slot())
         slot._c && (slot._d = true)
       }
       return
+
+      // 此时为组件插入了插槽内容(可能该组件并没有插槽)
     } else {
+      // 标记bit位拥有插槽内容
       type = ShapeFlags.SLOTS_CHILDREN
+
+      // 获取当前插槽内容的类型，然后根据情况动态生成子节点
       const slotFlag = (children as RawSlots)._
+
       if (!slotFlag && !(InternalObjectKey in children!)) {
         // if slots are not normalized, attach context instance
         // (compiled / normalized slots already have context)
+
+        // 如果插槽没用标准化，那么附着在当前组件实例上
         ;(children as RawSlots)._ctx = currentRenderingInstance
       } else if (slotFlag === SlotFlags.FORWARDED && currentRenderingInstance) {
         // a child component receives forwarded slots from the parent.
@@ -764,16 +838,26 @@ export function normalizeChildren(vnode: VNode, children: unknown) {
     children = { default: children, _ctx: currentRenderingInstance }
     type = ShapeFlags.SLOTS_CHILDREN
   } else {
+    // 子节点为文本节点
     children = String(children)
+
     // force teleport children to array so it can be moved around
+    // 强制将teleport的子节点们转化为数组
     if (shapeFlag & ShapeFlags.TELEPORT) {
       type = ShapeFlags.ARRAY_CHILDREN
       children = [createTextVNode(children as string)]
     } else {
+      // 标记type为文本子节点 1000 -> 8
       type = ShapeFlags.TEXT_CHILDREN
     }
   }
+
+  // 设置标准化后的子节点数组
   vnode.children = children as VNodeNormalizedChildren
+
+  // 或运算，重新计算节点类型
+  // 具有子节点的普通元素计算结果为10001
+  // 更新当前节点的自身信息
   vnode.shapeFlag |= type
 }
 

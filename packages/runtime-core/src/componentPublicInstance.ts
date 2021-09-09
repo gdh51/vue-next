@@ -290,8 +290,12 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
     // access on a plain object, so we use an accessCache object (with null
     // prototype) to memoize what access type a key corresponds to.
     let normalizedProps
+
+    // 访问公有属性
     if (key[0] !== '$') {
       const n = accessCache![key]
+
+      // 存在缓存时
       if (n !== undefined) {
         switch (n) {
           case AccessTypes.SETUP:
@@ -304,12 +308,18 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
             return props![key]
           // default: just fallthrough
         }
+
+        // 第一次访问已有属性，写入缓存并返回，记录访问类型
       } else if (setupState !== EMPTY_OBJ && hasOwn(setupState, key)) {
         accessCache![key] = AccessTypes.SETUP
         return setupState[key]
+
+        // 第一次访问data的已有属性，写入缓存并返回，记录访问类型
       } else if (data !== EMPTY_OBJ && hasOwn(data, key)) {
         accessCache![key] = AccessTypes.DATA
         return data[key]
+
+        // 第一次访问已有props
       } else if (
         // only cache other properties when instance has declared (thus stable)
         // props
@@ -318,14 +328,19 @@ export const PublicInstanceProxyHandlers: ProxyHandler<any> = {
       ) {
         accessCache![key] = AccessTypes.PROPS
         return props![key]
+
+        // 访问实例字段
       } else if (ctx !== EMPTY_OBJ && hasOwn(ctx, key)) {
         accessCache![key] = AccessTypes.CONTEXT
         return ctx[key]
+
+        // 其余非脏字段
       } else if (!__FEATURE_OPTIONS_API__ || shouldCacheAccess) {
         accessCache![key] = AccessTypes.OTHER
       }
     }
 
+    // 访问私有属性或方法
     const publicGetter = publicPropertiesMap[key]
     let cssModule, globalProperties
     // public $xxx properties

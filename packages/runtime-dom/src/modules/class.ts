@@ -2,6 +2,7 @@ import { ElementWithTransition } from '../components/Transition'
 
 // compiler should normalize class + :class bindings on the same element
 // into a single binding ['staticClass', dynamic]
+// 编译器已经将动态与静态class处理为统一的静态class
 export function patchClass(el: Element, value: string | null, isSVG: boolean) {
   // directly setting className should be faster than setAttribute in theory
   // if this is an element during a transition, take the temporary transition

@@ -73,9 +73,13 @@ const directiveImportMap = new WeakMap<DirectiveNode, symbol>()
 export const transformElement: NodeTransform = (node, context) => {
   // perform the work on exit, after all child expressions have been
   // processed and merged.
+  // 在全部子节点表达式处理后调用
+  // 处理插槽内容、属性等等，标记更新flags并
+  // 生成codegenNode
   return function postTransformElement() {
     node = context.currentNode!
 
+    // 非元素或组件节点退出
     if (
       !(
         node.type === NodeTypes.ELEMENT &&
@@ -91,6 +95,9 @@ export const transformElement: NodeTransform = (node, context) => {
 
     // The goal of the transform is to create a codegenNode implementing the
     // VNodeCall interface.
+    // 转化的目的是创建一个可以代表VNode调用的codegenNode
+
+    // 获取组件配置或当前元素标签
     let vnodeTag = isComponent
       ? resolveComponentType(node as ComponentNode, context)
       : `"${tag}"`
@@ -106,11 +113,14 @@ export const transformElement: NodeTransform = (node, context) => {
     let dynamicPropNames: string[] | undefined
     let vnodeDirectives: VNodeCall['directives']
 
+    // 是否应该为当前节点应用Block
     let shouldUseBlock =
       // dynamic component may resolve to plain elements
+      // 动态组件也可以解析为普通元素
       isDynamicComponent ||
       vnodeTag === TELEPORT ||
       vnodeTag === SUSPENSE ||
+      // 普通元素只有svg或foreignObject或有动态key值的元素使用
       (!isComponent &&
         // <svg> and <foreignObject> must be forced into blocks so that block
         // updates inside get proper isSVG flag at runtime. (#639, #643)
@@ -122,6 +132,7 @@ export const transformElement: NodeTransform = (node, context) => {
           findProp(node, 'key', true)))
 
     // props
+    // 处理元素上的属性
     if (props.length > 0) {
       const propsBuildResult = buildProps(node, context)
       vnodeProps = propsBuildResult.props
@@ -137,7 +148,9 @@ export const transformElement: NodeTransform = (node, context) => {
     }
 
     // children
+    // 具有子节点
     if (node.children.length > 0) {
+      // 当前组件为keepAlive
       if (vnodeTag === KEEP_ALIVE) {
         // Although a built-in component, we compile KeepAlive with raw children
         // instead of slot functions so that it can be used inside Transition
@@ -146,8 +159,11 @@ export const transformElement: NodeTransform = (node, context) => {
         // 1. Force keep-alive into a block. This avoids its children being
         //    collected by a parent block.
         shouldUseBlock = true
+
         // 2. Force keep-alive to always be updated, since it uses raw children.
         patchFlag |= PatchFlags.DYNAMIC_SLOTS
+
+        // dev
         if (__DEV__ && node.children.length > 1) {
           context.onError(
             createCompilerError(ErrorCodes.X_KEEP_ALIVE_INVALID_CHILDREN, {
@@ -159,6 +175,11 @@ export const transformElement: NodeTransform = (node, context) => {
         }
       }
 
+      /* 是否已经处理当前组件的插槽内容，
+       * 条件当前节点为组件且具有插槽内容。
+       * TELEPORT/KEEPALIVE组件不进行处理，
+       * 因为它们不是真实的组件，且它们有各自的独立处理
+       */
       const shouldBuildAsSlots =
         isComponent &&
         // Teleport is not a real component and has dedicated runtime handling
@@ -166,25 +187,38 @@ export const transformElement: NodeTransform = (node, context) => {
         // explained above.
         vnodeTag !== KEEP_ALIVE
 
+      // 处理插槽内容
       if (shouldBuildAsSlots) {
+        // 提取插槽内容，将其节点转化为函数
         const { slots, hasDynamicSlots } = buildSlots(node, context)
+
+        // 设置当前节点的子节点
         vnodeChildren = slots
+
+        // 具有动态插槽时，将patchFlag上标记
         if (hasDynamicSlots) {
           patchFlag |= PatchFlags.DYNAMIC_SLOTS
         }
+
+        // 单个子节点且不为TELEPORT组件时
       } else if (node.children.length === 1 && vnodeTag !== TELEPORT) {
         const child = node.children[0]
         const type = child.type
+
         // check for dynamic text children
+        // 子节点为动态的文本节点
         const hasDynamicTextChild =
           type === NodeTypes.INTERPOLATION ||
           type === NodeTypes.COMPOUND_EXPRESSION
+
+        // 如果为动态文本则记录在patchFlags上
         if (
           hasDynamicTextChild &&
           getConstantType(child, context) === ConstantTypes.NOT_CONSTANT
         ) {
           patchFlag |= PatchFlags.TEXT
         }
+
         // pass directly if the only child is a text node
         // (plain / interpolation / expression)
         if (hasDynamicTextChild || type === NodeTypes.TEXT) {
@@ -192,12 +226,15 @@ export const transformElement: NodeTransform = (node, context) => {
         } else {
           vnodeChildren = node.children
         }
+
+        // 其余情况直接赋值
       } else {
         vnodeChildren = node.children
       }
     }
 
     // patchFlag & dynamicPropNames
+    // 节点需要在patch时更新
     if (patchFlag !== 0) {
       if (__DEV__) {
         if (patchFlag < 0) {
@@ -213,13 +250,17 @@ export const transformElement: NodeTransform = (node, context) => {
           vnodePatchFlag = patchFlag + ` /* ${flagNames} */`
         }
       } else {
+        // 将patchFlags 字符串化
         vnodePatchFlag = String(patchFlag)
       }
+
+      // 将动态prop转化为数组形式
       if (dynamicPropNames && dynamicPropNames.length) {
         vnodeDynamicProps = stringifyDynamicPropNames(dynamicPropNames)
       }
     }
 
+    // 为当前节点创建codegen节点
     node.codegenNode = createVNodeCall(
       context,
       vnodeTag,
@@ -236,6 +277,7 @@ export const transformElement: NodeTransform = (node, context) => {
   }
 }
 
+// 计算组件类型
 export function resolveComponentType(
   node: ComponentNode,
   context: TransformContext,
@@ -244,11 +286,16 @@ export function resolveComponentType(
   let { tag } = node
 
   // 1. dynamic component
+  // 1. 动态组件
   const isExplicitDynamic = isComponentTag(tag)
   const isProp = findProp(node, 'is')
+
+  // 特征，具有is属性
   if (isProp) {
+    // 为动态组件
     if (
       isExplicitDynamic ||
+      // 兼容v2
       (__COMPAT__ &&
         isCompatEnabled(
           CompilerDeprecationTypes.COMPILER_IS_ON_ELEMENT,
@@ -264,6 +311,8 @@ export function resolveComponentType(
           exp
         ])
       }
+
+      // 非动态组件，像以下例子一样也会作为组件
     } else if (
       isProp.type === NodeTypes.ATTRIBUTE &&
       isProp.value!.content.startsWith('vue:')
@@ -285,6 +334,7 @@ export function resolveComponentType(
   }
 
   // 2. built-in components (Teleport, Transition, KeepAlive, Suspense...)
+  // 2. 内置组件
   const builtIn = isCoreComponent(tag) || context.isBuiltInComponent(tag)
   if (builtIn) {
     // built-ins are simply fallthroughs / have special handling during ssr
@@ -399,10 +449,14 @@ export function buildProps(
   let hasVnodeHook = false
   const dynamicPropNames: string[] = []
 
+  // 分析AST对象的patchFlag
   const analyzePatchFlag = ({ key, value }: Property) => {
+    // 当前对象的key是否为静态
     if (isStaticExp(key)) {
       const name = key.content
       const isEventHandler = isOn(name)
+
+      // 复合事件
       if (
         !isComponent &&
         isEventHandler &&
@@ -417,10 +471,12 @@ export function buildProps(
         hasHydrationEventBinding = true
       }
 
+      // Vnode Hook
       if (isEventHandler && isReservedProp(name)) {
         hasVnodeHook = true
       }
 
+      // 当属性为常量值时跳过
       if (
         value.type === NodeTypes.JS_CACHE_EXPRESSION ||
         ((value.type === NodeTypes.SIMPLE_EXPRESSION ||
@@ -454,22 +510,30 @@ export function buildProps(
     }
   }
 
+  // 遍历属性
   for (let i = 0; i < props.length; i++) {
     // static attribute
     const prop = props[i]
+
+    // 静态属性
     if (prop.type === NodeTypes.ATTRIBUTE) {
       const { loc, name, value } = prop
       let isStatic = true
+
+      // 当前属性为ref
       if (name === 'ref') {
         hasRef = true
         // in inline mode there is no setupState object, so we can't use string
         // keys to set the ref. Instead, we need to transform it to pass the
         // acrtual ref instead.
+        // 非浏览器环境
         if (!__BROWSER__ && context.inline) {
           isStatic = false
         }
       }
+
       // skip is on <component>, or is="vue:xxx"
+      // 跳过上述情况
       if (
         name === 'is' &&
         (isComponentTag(tag) ||
@@ -482,13 +546,18 @@ export function buildProps(
       ) {
         continue
       }
+
+      // 添加静态属性
       properties.push(
+        // 创建key ast
         createObjectProperty(
           createSimpleExpression(
             name,
             true,
             getInnerRange(loc, 0, name.length)
           ),
+
+          // 创建value ast
           createSimpleExpression(
             value ? value.content : '',
             isStatic,
@@ -496,6 +565,8 @@ export function buildProps(
           )
         )
       )
+
+      // 指令
     } else {
       // directives
       const { name, arg, exp, loc } = prop
@@ -503,6 +574,7 @@ export function buildProps(
       const isVOn = name === 'on'
 
       // skip v-slot - it is handled by its dedicated transform.
+      // 跳过 v-slot有专门的处理
       if (name === 'slot') {
         if (!isComponent) {
           context.onError(
@@ -535,16 +607,25 @@ export function buildProps(
       }
 
       // special case for v-bind and v-on with no argument
+      // 处理v-bind/v-on对象语法
       if (!arg && (isVBind || isVOn)) {
         hasDynamicKeys = true
+
+        // 右值
         if (exp) {
+          // 具有属性时
           if (properties.length) {
+            // 将属性整合后加入到mergeArgs中
             mergeArgs.push(
               createObjectExpression(dedupeProperties(properties), elementLoc)
             )
+
+            // 清空已处理属性
             properties = []
           }
+
           if (isVBind) {
+            // 兼容，跳过
             if (__COMPAT__) {
               // 2.x v-bind object order compat
               if (__DEV__) {
@@ -598,6 +679,8 @@ export function buildProps(
               arguments: [exp]
             })
           }
+
+          // 不写表达式，报错
         } else {
           context.onError(
             createCompilerError(
@@ -611,24 +694,37 @@ export function buildProps(
         continue
       }
 
+      // 指令转化，三个on/bind/model
       const directiveTransform = context.directiveTransforms[name]
+
+      // 是对应指令时，进行转化
       if (directiveTransform) {
         // has built-in directive transform.
+        // 直接调用转化
         const { props, needRuntime } = directiveTransform(prop, node, context)
+
+        // 浏览器环境下，分析patchFlag
         !ssr && props.forEach(analyzePatchFlag)
+
+        // 重新归纳props
         properties.push(...props)
+
+        // 运行时指令
         if (needRuntime) {
           runtimeDirectives.push(prop)
           if (isSymbol(needRuntime)) {
             directiveImportMap.set(prop, needRuntime)
           }
         }
+
+        // 其余指令加入运行时指令合集中
       } else {
         // no built-in transform, this is a user custom directive.
         runtimeDirectives.push(prop)
       }
     }
 
+    // 兼容
     if (
       __COMPAT__ &&
       prop.type === NodeTypes.ATTRIBUTE &&
@@ -652,18 +748,23 @@ export function buildProps(
   let propsExpression: PropsExpression | undefined = undefined
 
   // has v-bind="object" or v-on="object", wrap with mergeProps
+  // 处理v-bind/v-on对象形式写法
   if (mergeArgs.length) {
     if (properties.length) {
       mergeArgs.push(
         createObjectExpression(dedupeProperties(properties), elementLoc)
       )
     }
+
+    // 具有属性时，创建调用表达式
     if (mergeArgs.length > 1) {
       propsExpression = createCallExpression(
         context.helper(MERGE_PROPS),
         mergeArgs,
         elementLoc
       )
+
+      // 单独v-bind时，不需要处理
     } else {
       // single v-bind with nothing else - no need for a mergeProps call
       propsExpression = mergeArgs[0]
@@ -676,6 +777,8 @@ export function buildProps(
   }
 
   // patchFlag analysis
+  // 分析当前元素的patchFlag
+  // 打上patchFlag
   if (hasDynamicKeys) {
     patchFlag |= PatchFlags.FULL_PROPS
   } else {
@@ -692,6 +795,8 @@ export function buildProps(
       patchFlag |= PatchFlags.HYDRATE_EVENTS
     }
   }
+
+  // 无patchFlag或具有符合事件且具有其他特殊属性，强制patch
   if (
     (patchFlag === 0 || patchFlag === PatchFlags.HYDRATE_EVENTS) &&
     (hasRef || hasVnodeHook || runtimeDirectives.length > 0)
@@ -790,19 +895,31 @@ export function buildProps(
 function dedupeProperties(properties: Property[]): Property[] {
   const knownProps: Map<string, Property> = new Map()
   const deduped: Property[] = []
+
+  // 遍历属性，找出重复属性
   for (let i = 0; i < properties.length; i++) {
     const prop = properties[i]
+
     // dynamic keys are always allowed
+    // 动态prop名，直接加入去重数组
     if (prop.key.type === NodeTypes.COMPOUND_EXPRESSION || !prop.key.isStatic) {
       deduped.push(prop)
       continue
     }
+
+    // 非动态属性
     const name = prop.key.content
     const existing = knownProps.get(name)
+
+    // 已存在的
     if (existing) {
+      // 合并属性
       if (name === 'style' || name === 'class' || name.startsWith('on')) {
+        // 合并到一个数组ast
         mergeAsArray(existing, prop)
       }
+
+      // 其余重复属性在parse阶段报错
       // unexpected duplicate, should have emitted error during parse
     } else {
       knownProps.set(name, prop)

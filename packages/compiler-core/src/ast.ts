@@ -31,12 +31,14 @@ export const enum NodeTypes {
   INTERPOLATION,
   ATTRIBUTE,
   DIRECTIVE,
+
   // containers
   COMPOUND_EXPRESSION,
   IF,
   IF_BRANCH,
   FOR,
   TEXT_CALL,
+
   // codegen
   VNODE_CALL,
   JS_CALL_EXPRESSION,
@@ -567,6 +569,7 @@ export function createRoot(
   }
 }
 
+// 创建VNodeCall AST
 export function createVNodeCall(
   context: TransformContext | null,
   tag: VNodeCall['tag'],
@@ -580,6 +583,7 @@ export function createVNodeCall(
   isComponent: VNodeCall['isComponent'] = false,
   loc = locStub
 ): VNodeCall {
+  // 记录helper记录
   if (context) {
     if (isBlock) {
       context.helper(OPEN_BLOCK)

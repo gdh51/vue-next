@@ -149,13 +149,18 @@ export function initProps(
 ) {
   const props: Data = {}
   const attrs: Data = {}
+
+  // 为attrs定义内置key
   def(attrs, InternalObjectKey, 1)
 
+  // 获取props默认值
   instance.propsDefaults = Object.create(null)
 
+  // 处理设置props值
   setFullProps(instance, rawProps, props, attrs)
 
   // ensure all declared prop keys are present
+  // 确保定义了的props存在
   for (const key in instance.propsOptions[0]) {
     if (!(key in props)) {
       props[key] = undefined
@@ -167,13 +172,17 @@ export function initProps(
     validateProps(rawProps || {}, props, instance)
   }
 
+  // 是否为状态组件，是时对props表层代理
   if (isStateful) {
     // stateful
     instance.props = isSSR ? props : shallowReactive(props)
   } else {
+    // 函数组件，未定义props时，全处理为attrs
     if (!instance.type.props) {
       // functional w/ optional props, props === attrs
       instance.props = attrs
+
+      // 定义时处理为props
     } else {
       // functional w/ declared props
       instance.props = props
@@ -312,18 +321,23 @@ export function updateProps(
   }
 }
 
+// 设置props
 function setFullProps(
-  instance: ComponentInternalInstance,
-  rawProps: Data | null,
-  props: Data,
-  attrs: Data
+  instance: ComponentInternalInstance, // 当前组件实例
+  rawProps: Data | null, // 未处理的props
+  props: Data, // 历史props
+  attrs: Data // 历史attrs
 ) {
   const [options, needCastKeys] = instance.propsOptions
   let hasAttrsChanged = false
   let rawCastValues: Data | undefined
+
+  // 有传入props
   if (rawProps) {
+    // 遍历props
     for (let key in rawProps) {
       // key, ref are reserved and never passed down
+      // 拦截保留字字段
       if (isReservedProp(key)) {
         continue
       }
@@ -341,16 +355,22 @@ function setFullProps(
         }
       }
 
+      // 获取值
       const value = rawProps[key]
       // prop option names are camelized during normalization, so to support
       // kebab -> camel conversion here we need to camelize the key.
       let camelKey
+
+      // 是定义在props中的属性
       if (options && hasOwn(options, (camelKey = camelize(key)))) {
+        //
         if (!needCastKeys || !needCastKeys.includes(camelKey)) {
           props[camelKey] = value
         } else {
           ;(rawCastValues || (rawCastValues = {}))[camelKey] = value
         }
+
+        // 同时该属性不为事件(即不为onEvent)
       } else if (!isEmitListener(instance.emitsOptions, key)) {
         // Any non-declared (either as a prop or an emitted event) props are put
         // into a separate `attrs` object for spreading. Make sure to preserve
@@ -362,6 +382,8 @@ function setFullProps(
             continue
           }
         }
+
+        // 记做attrs，在值发生变更时更新
         if (value !== attrs[key]) {
           attrs[key] = value
           hasAttrsChanged = true
@@ -400,13 +422,20 @@ function resolvePropValue(
   const opt = options[key]
   if (opt != null) {
     const hasDefault = hasOwn(opt, 'default')
+
     // default values
+    // 在无值且有default配置情况下计算默认值
     if (hasDefault && value === undefined) {
       const defaultValue = opt.default
+
+      // type为非Function，但默认值为函数时
       if (opt.type !== Function && isFunction(defaultValue)) {
+        // 优先取缓存的默认值
         const { propsDefaults } = instance
         if (key in propsDefaults) {
           value = propsDefaults[key]
+
+          // 没有重新取值并设置缓存
         } else {
           setCurrentInstance(instance)
           value = propsDefaults[key] = defaultValue.call(
@@ -418,11 +447,14 @@ function resolvePropValue(
           )
           unsetCurrentInstance()
         }
+
+        // 其余情况直接赋予默认值
       } else {
         value = defaultValue
       }
     }
     // boolean casting
+    // 是否需要特殊处理type Boolean
     if (opt[BooleanFlags.shouldCast]) {
       if (isAbsent && !hasDefault) {
         value = false
@@ -442,6 +474,7 @@ export function normalizePropsOptions(
   appContext: AppContext,
   asMixin = false
 ): NormalizedPropsOptions {
+  // props配置缓存
   const cache = appContext.propsCache
   const cached = cache.get(comp)
   if (cached) {
@@ -454,6 +487,8 @@ export function normalizePropsOptions(
 
   // apply mixin/extends props
   let hasExtends = false
+
+  // 兼容options语法
   if (__FEATURE_OPTIONS_API__ && !isFunction(comp)) {
     const extendProps = (raw: ComponentOptions) => {
       if (__COMPAT__ && isFunction(raw)) {
@@ -475,11 +510,13 @@ export function normalizePropsOptions(
     }
   }
 
+  // 无props时，设置空缓存
   if (!raw && !hasExtends) {
     cache.set(comp, EMPTY_ARR as any)
     return EMPTY_ARR as any
   }
 
+  // 数组形式，转化为对象形式
   if (isArray(raw)) {
     for (let i = 0; i < raw.length; i++) {
       if (__DEV__ && !isString(raw[i])) {
@@ -490,23 +527,37 @@ export function normalizePropsOptions(
         normalized[normalizedKey] = EMPTY_OBJ
       }
     }
+
+    // 对象形式
   } else if (raw) {
+    // 非对象形式报错
     if (__DEV__ && !isObject(raw)) {
       warn(`invalid props options`, raw)
     }
+
+    // 遍历原始配置
     for (const key in raw) {
+      // 标准化prop名称(驼峰形式)
       const normalizedKey = camelize(key)
+
+      // 合法时进行处理
       if (validatePropName(normalizedKey)) {
         const opt = raw[key]
         const prop: NormalizedProp = (normalized[normalizedKey] =
+          // 数组为只指定多个类型；为函数时，支持传入一个自定义构造函数作为类型
           isArray(opt) || isFunction(opt) ? { type: opt } : opt)
         if (prop) {
           const booleanIndex = getTypeIndex(Boolean, prop.type)
           const stringIndex = getTypeIndex(String, prop.type)
+
           prop[BooleanFlags.shouldCast] = booleanIndex > -1
+
+          // Boolean定义先于String，或未定义String时，需要区分纯true和truthy
           prop[BooleanFlags.shouldCastTrue] =
             stringIndex < 0 || booleanIndex < stringIndex
+
           // if the prop needs boolean casting or default value
+          // 添加需要默认值的字段
           if (booleanIndex > -1 || hasOwn(prop, 'default')) {
             needCastKeys.push(normalizedKey)
           }

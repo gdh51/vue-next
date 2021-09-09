@@ -21,9 +21,13 @@ export interface WritableComputedOptions<T> {
 }
 
 class ComputedRefImpl<T> {
+  // 下属依赖项
   public dep?: Dep = undefined
 
+  // 计算属性值的引用
   private _value!: T
+
+  // 是否允许重新计算
   private _dirty = true
   public readonly effect: ReactiveEffect<T>
 
@@ -31,30 +35,51 @@ class ComputedRefImpl<T> {
   public readonly [ReactiveFlags.IS_READONLY]: boolean
 
   constructor(
+    // getter函数
     getter: ComputedGetter<T>,
+    // setter函数
     private readonly _setter: ComputedSetter<T>,
+    // 是否只读
     isReadonly: boolean
   ) {
+    // 创建effect，自定义调度函数
     this.effect = new ReactiveEffect(getter, () => {
+      // 未有依赖项更新时，不允许重新计算
       if (!this._dirty) {
         this._dirty = true
+
+        // 通知当前收集当前computed属性的effect调度更新
         triggerRefValue(this)
       }
     })
+
+    // 是否为只读属性
     this[ReactiveFlags.IS_READONLY] = isReadonly
   }
 
+  // 计算属性的取值属性
   get value() {
     // the computed ref may get wrapped by other proxies e.g. readonly() #3376
     const self = toRaw(this)
+
+    // computed追踪当前正在收集依赖项的effect
     trackRefValue(self)
+
+    // 是否允许计算新值
     if (self._dirty) {
+      // 允许计算新值时，计算一次后关闭
       self._dirty = false
+
+      // 调度原computed函数进行依赖收集和取值
+      // (即，依赖项更新，通知computed重新计算)
       self._value = self.effect.run()!
     }
+
+    // 返回最新值
     return self._value
   }
 
+  // 调用setter设置新的值
   set value(newValue: T) {
     this._setter(newValue)
   }
@@ -68,6 +93,8 @@ export function computed<T>(
   options: WritableComputedOptions<T>,
   debugOptions?: DebuggerOptions
 ): WritableComputedRef<T>
+
+// computed函数
 export function computed<T>(
   getterOrOptions: ComputedGetter<T> | WritableComputedOptions<T>,
   debugOptions?: DebuggerOptions
@@ -75,21 +102,28 @@ export function computed<T>(
   let getter: ComputedGetter<T>
   let setter: ComputedSetter<T>
 
+  // 用户传入一个getter函数
   if (isFunction(getterOrOptions)) {
     getter = getterOrOptions
+
+    // setter定义为不能修改的函数
     setter = __DEV__
       ? () => {
           console.warn('Write operation failed: computed value is readonly')
         }
       : NOOP
   } else {
+    // 用户传入一个具有getter/setter函数的配置对象
     getter = getterOrOptions.get
     setter = getterOrOptions.set
   }
 
+  // 创建computed引用
   const cRef = new ComputedRefImpl(
     getter,
     setter,
+
+    // 是否只读(无setter则为只读)
     isFunction(getterOrOptions) || !getterOrOptions.set
   )
 

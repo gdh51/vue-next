@@ -11,7 +11,8 @@ export function normalizeStyle(
     for (let i = 0; i < value.length; i++) {
       const item = value[i]
       const normalized = isString(item)
-        ? parseStringStyle(item)
+        ? // 解析字符串类型样式
+          parseStringStyle(item)
         : (normalizeStyle(item) as NormalizedStyle)
       if (normalized) {
         for (const key in normalized) {
@@ -30,6 +31,7 @@ export function normalizeStyle(
 const listDelimiterRE = /;(?![^(]*\))/g
 const propertyDelimiterRE = /:(.+)/
 
+// 将字符串形式的style转化为对象形式
 export function parseStringStyle(cssText: string): NormalizedStyle {
   const ret: NormalizedStyle = {}
   cssText.split(listDelimiterRE).forEach(item => {
@@ -64,8 +66,12 @@ export function stringifyStyle(
 
 export function normalizeClass(value: unknown): string {
   let res = ''
+
+  // 字符串时直接返回
   if (isString(value)) {
     res = value
+
+    // 数组时递归处理为字符串后返回，然后拼接
   } else if (isArray(value)) {
     for (let i = 0; i < value.length; i++) {
       const normalized = normalizeClass(value[i])
@@ -73,6 +79,8 @@ export function normalizeClass(value: unknown): string {
         res += normalized + ' '
       }
     }
+
+    // 对象形式时，值为truthy时添加该类
   } else if (isObject(value)) {
     for (const name in value) {
       if (value[name]) {

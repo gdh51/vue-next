@@ -190,17 +190,24 @@ export function createTransformContext(
       vPre: 0,
       vOnce: 0
     },
+
+    // 当前处理节点的父节点
     parent: null,
     currentNode: root,
+
+    // 当前处理节点在父节点中的下标
     childIndex: 0,
     inVOnce: false,
 
     // methods
+    // 记录某个变量或方法数量，方便在实际创建渲染函数时确定导入什么方法
     helper(name) {
       const count = context.helpers.get(name) || 0
       context.helpers.set(name, count + 1)
       return name
     },
+
+    // 减少记录次数1次，0次时移除
     removeHelper(name) {
       const count = context.helpers.get(name)
       if (count) {
@@ -215,6 +222,8 @@ export function createTransformContext(
     helperString(name) {
       return `_${helperNameMap[context.helper(name)]}`
     },
+
+    // 替换当前关注节点
     replaceNode(node) {
       /* istanbul ignore if */
       if (__DEV__) {
@@ -279,7 +288,10 @@ export function createTransformContext(
       }
     },
     hoist(exp) {
+      // 文本创建简单表达式
       if (isString(exp)) exp = createSimpleExpression(exp)
+
+      // 加入hoists中
       context.hoists.push(exp)
       const identifier = createSimpleExpression(
         `_hoisted_${context.hoists.length}`,
@@ -287,6 +299,8 @@ export function createTransformContext(
         exp.loc,
         ConstantTypes.CAN_HOIST
       )
+
+      // 存储原始codegenNode
       identifier.hoisted = exp
       return identifier
     },
@@ -315,14 +329,22 @@ export function createTransformContext(
 }
 
 export function transform(root: RootNode, options: TransformOptions) {
+  // 创建转化上下文
   const context = createTransformContext(root, options)
+
+  // 遍历全部节点，生成具体生成节点的codegenNode
   traverseNode(root, context)
+
+  // 提升可作为常量的节点和属性
   if (options.hoistStatic) {
     hoistStatic(root, context)
   }
+
+  // 为根节点创建codegen
   if (!options.ssr) {
     createRootCodegen(root, context)
   }
+
   // finalize meta information
   root.helpers = [...context.helpers.keys()]
   root.components = [...context.components]
@@ -340,6 +362,8 @@ export function transform(root: RootNode, options: TransformOptions) {
 function createRootCodegen(root: RootNode, context: TransformContext) {
   const { helper } = context
   const { children } = root
+
+  // 单个根节点
   if (children.length === 1) {
     const child = children[0]
     // if the single child is an element, turn it into a block.
@@ -350,6 +374,8 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       if (codegenNode.type === NodeTypes.VNODE_CALL) {
         makeBlock(codegenNode, context)
       }
+
+      // 直接使用具体元素的codegen
       root.codegenNode = codegenNode
     } else {
       // - single <slot/>, IfNode, ForNode: already blocks.
@@ -357,12 +383,16 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       // root codegen falls through via genNode()
       root.codegenNode = child
     }
+
+    // 多个根节点
   } else if (children.length > 1) {
     // root has multiple nodes - return a fragment block.
     let patchFlag = PatchFlags.STABLE_FRAGMENT
     let patchFlagText = PatchFlagNames[PatchFlags.STABLE_FRAGMENT]
+
     // check if the fragment actually contains a single valid child with
     // the rest being comments
+    // dev模式
     if (
       __DEV__ &&
       children.filter(c => c.type !== NodeTypes.COMMENT).length === 1
@@ -370,6 +400,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
       patchFlag |= PatchFlags.DEV_ROOT_FRAGMENT
       patchFlagText += `, ${PatchFlagNames[PatchFlags.DEV_ROOT_FRAGMENT]}`
     }
+
     root.codegenNode = createVNodeCall(
       context,
       helper(FRAGMENT),
@@ -387,6 +418,7 @@ function createRootCodegen(root: RootNode, context: TransformContext) {
   }
 }
 
+// 遍历子节点数组进行处理
 export function traverseChildren(
   parent: ParentNode,
   context: TransformContext
@@ -395,26 +427,44 @@ export function traverseChildren(
   const nodeRemoved = () => {
     i--
   }
+
+  // 这里动态计算的节点数量
   for (; i < parent.children.length; i++) {
     const child = parent.children[i]
+
+    // 文本节点跳过
     if (isString(child)) continue
+
+    // 记录📝当前父节点
     context.parent = parent
+
+    // 记录📝当前子节点下标
     context.childIndex = i
+
+    // 设置节点移除函数
     context.onNodeRemoved = nodeRemoved
+
+    // 递归遍历子数组
     traverseNode(child, context)
   }
 }
 
+// 遍历ast🌲，丰富其信息
 export function traverseNode(
   node: RootNode | TemplateChildNode,
   context: TransformContext
 ) {
+  // 设置当前处理的节点
   context.currentNode = node
+
   // apply transform plugins
+  // 调用节点转化插件，具体参考compile文件
   const { nodeTransforms } = context
+
   const exitFns = []
   for (let i = 0; i < nodeTransforms.length; i++) {
     const onExit = nodeTransforms[i](node, context)
+
     if (onExit) {
       if (isArray(onExit)) {
         exitFns.push(...onExit)
@@ -422,23 +472,30 @@ export function traverseNode(
         exitFns.push(onExit)
       }
     }
+
+    // 如果当前节点已经被移除，那么退出
     if (!context.currentNode) {
       // node was removed
       return
     } else {
       // node may have been replaced
+      // 更新节点，因为可能会被替换
       node = context.currentNode
     }
   }
 
   switch (node.type) {
+    // 注释节点
     case NodeTypes.COMMENT:
+      // 浏览器
       if (!context.ssr) {
         // inject import for the Comment symbol, which is needed for creating
         // comment nodes with `createVNode`
         context.helper(CREATE_COMMENT)
       }
       break
+
+    // 插值表达式节点
     case NodeTypes.INTERPOLATION:
       // no need to traverse, but we need to inject toString helper
       if (!context.ssr) {
@@ -447,6 +504,7 @@ export function traverseNode(
       break
 
     // for container types, further traverse downwards
+    // 具有if分支的节点，遍历子分支
     case NodeTypes.IF:
       for (let i = 0; i < node.branches.length; i++) {
         traverseNode(node.branches[i], context)
@@ -463,28 +521,38 @@ export function traverseNode(
   // exit transforms
   context.currentNode = node
   let i = exitFns.length
+
+  // 调用退出函数，退出函数会在所有子节点处理完后处理
   while (i--) {
     exitFns[i]()
   }
 }
 
+// 创建结构指令转化函数，该函数就是在查询当元素是否具有该属性，
+// 在具有该属性时，为其调用参数二函数，并返回调用函数的返回值
 export function createStructuralDirectiveTransform(
   name: string | RegExp,
   fn: StructuralDirectiveTransform
 ): NodeTransform {
+  // 初始化匹配规则
   const matches = isString(name)
     ? (n: string) => n === name
     : (n: string) => name.test(n)
 
   return (node, context) => {
+    // 确认当前节点为元素
     if (node.type === NodeTypes.ELEMENT) {
       const { props } = node
+
       // structural directive transforms are not concerned with slots
       // as they are handled separately in vSlot.ts
+      // 当前元素为模板，且具有插槽指令时跳过处理，因为会单独处理
       if (node.tagType === ElementTypes.TEMPLATE && props.some(isVSlot)) {
         return
       }
       const exitFns = []
+
+      // 处理并调用对应匹配属性(且要从props中移除)
       for (let i = 0; i < props.length; i++) {
         const prop = props[i]
         if (prop.type === NodeTypes.DIRECTIVE && matches(prop.name)) {
@@ -493,6 +561,8 @@ export function createStructuralDirectiveTransform(
           // traverse itself in case it moves the node around
           props.splice(i, 1)
           i--
+
+          // 调用原转化方法
           const onExit = fn(node, prop, context)
           if (onExit) exitFns.push(onExit)
         }

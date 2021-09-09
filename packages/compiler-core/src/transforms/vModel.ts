@@ -21,6 +21,8 @@ import { BindingTypes } from '../options'
 
 export const transformModel: DirectiveTransform = (dir, node, context) => {
   const { exp, arg } = dir
+
+  // 无绑定值报错
   if (!exp) {
     context.onError(
       createCompilerError(ErrorCodes.X_V_MODEL_NO_EXPRESSION, dir.loc)
@@ -35,12 +37,15 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
   // im SFC <script setup> inline mode, the exp may have been transformed into
   // _unref(exp)
   const bindingType = context.bindingMetadata[rawExp]
+
+  // 非浏览器
   const maybeRef =
     !__BROWSER__ &&
     context.inline &&
     bindingType &&
     bindingType !== BindingTypes.SETUP_CONST
 
+  // 空表达式，或非成员访问表达式(a.b)，报错
   if (!expString.trim() || (!isMemberExpression(expString) && !maybeRef)) {
     context.onError(
       createCompilerError(ErrorCodes.X_V_MODEL_MALFORMED_EXPRESSION, exp.loc)
@@ -48,6 +53,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
     return createTransformProps()
   }
 
+  // 非浏览器
   if (
     !__BROWSER__ &&
     context.prefixIdentifiers &&
@@ -60,7 +66,10 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
     return createTransformProps()
   }
 
+  // 创建属性名称，默认为modelValue
   const propName = arg ? arg : createSimpleExpression('modelValue', true)
+
+  // 创建事件名称
   const eventName = arg
     ? isStaticExp(arg)
       ? `onUpdate:${arg.content}`
@@ -69,6 +78,8 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
 
   let assignmentExp: ExpressionNode
   const eventArg = context.isTS ? `($event: any)` : `$event`
+
+  // SFC下setup模式处理
   if (maybeRef) {
     if (bindingType === BindingTypes.SETUP_REF) {
       // v-model used on known ref.
@@ -82,12 +93,16 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
       // the assignment needs to check whether the binding is actually a ref.
       const altAssignment =
         bindingType === BindingTypes.SETUP_LET ? `${rawExp} = $event` : `null`
+
+      // 创建赋值 复合表达式
       assignmentExp = createCompoundExpression([
         `${eventArg} => (${context.helperString(IS_REF)}(${rawExp}) ? `,
         createSimpleExpression(rawExp, false, exp.loc),
         `.value = $event : ${altAssignment})`
       ])
     }
+
+    // 一般正常处理
   } else {
     assignmentExp = createCompoundExpression([
       `${eventArg} => (`,
@@ -115,6 +130,7 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
   }
 
   // modelModifiers: { foo: true, "bar-baz": true }
+  // 处理修饰符
   if (dir.modifiers.length && node.tagType === ElementTypes.COMPONENT) {
     const modifiers = dir.modifiers
       .map(m => (isSimpleIdentifier(m) ? m : JSON.stringify(m)) + `: true`)

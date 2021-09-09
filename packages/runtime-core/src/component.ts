@@ -436,42 +436,60 @@ const emptyAppContext = createAppContext()
 
 let uid = 0
 
+// 创建组件实例
 export function createComponentInstance(
   vnode: VNode,
   parent: ComponentInternalInstance | null,
   suspense: SuspenseBoundary | null
 ) {
+  // 获取组件配置
   const type = vnode.type as ConcreteComponent
+
   // inherit parent app context - or - if root, adopt from root vnode
+  // 获取当前应用上下文，从父节点上获取或当前节点上获取(此时为根节点)
   const appContext =
     (parent ? parent.appContext : vnode.appContext) || emptyAppContext
 
   const instance: ComponentInternalInstance = {
     uid: uid++,
     vnode,
+
+    // 组件配置对象
     type,
+
+    // 父组件实例
     parent,
+
+    // 应用上下文
     appContext,
     root: null!, // to be immediately set
     next: null,
     subTree: null!, // will be set synchronously right after creation
     update: null!, // will be set synchronously right after creation
+
+    // 创建副作用函数作用域
     scope: new EffectScope(true /* detached */),
     render: null,
     proxy: null,
     exposed: null,
     exposeProxy: null,
     withProxy: null,
+
+    // 优先使用父级提供provide，否则使用app上下文的全局provide
     provides: parent ? parent.provides : Object.create(appContext.provides),
     accessCache: null!,
     renderCache: [],
 
     // local resovled assets
+    // 本地处理资源
     components: null,
     directives: null,
 
     // resolved props and emits options
+    // 标准化props
     propsOptions: normalizePropsOptions(type, appContext),
+
+    // 标准化emits
     emitsOptions: normalizeEmitsOptions(type, appContext),
 
     // emit
@@ -520,12 +538,18 @@ export function createComponentInstance(
     ec: null,
     sp: null
   }
+
+  // 创建渲染上下文()
   if (__DEV__) {
     instance.ctx = createDevRenderContext(instance)
   } else {
     instance.ctx = { _: instance }
   }
+
+  // 标记根节点
   instance.root = parent ? parent.root : instance
+
+  // 获取emit函数并绑定上下文
   instance.emit = emit.bind(null, instance)
 
   // apply custom element special handling
@@ -555,6 +579,8 @@ const isBuiltInTag = /*#__PURE__*/ makeMap('slot,component')
 
 export function validateComponentName(name: string, config: AppConfig) {
   const appIsNativeTag = config.isNativeTag || NO
+
+  // 查看是否为库内置标签或原生标签
   if (isBuiltInTag(name) || appIsNativeTag(name)) {
     warn(
       'Do not use built-in or reserved HTML elements as component id: ' + name
@@ -574,11 +600,19 @@ export function setupComponent(
 ) {
   isInSSRComponentSetup = isSSR
 
+  // 获取当前节点的真实插槽内容和props
   const { props, children } = instance.vnode
+
+  // 是否为稳定组件
   const isStateful = isStatefulComponent(instance)
+
+  // 初始化props属性
   initProps(instance, props, isStateful, isSSR)
+
+  // 初始化插槽内容
   initSlots(instance, children)
 
+  // 获取setup结果，并生成render函数，仅在服务器渲染时返回值
   const setupResult = isStateful
     ? setupStatefulComponent(instance, isSSR)
     : undefined
@@ -590,8 +624,10 @@ function setupStatefulComponent(
   instance: ComponentInternalInstance,
   isSSR: boolean
 ) {
+  // 获取组件配置
   const Component = instance.type as ComponentOptions
 
+  // 开发模式下校验组件、子组件、指令名称是否合法
   if (__DEV__) {
     if (Component.name) {
       validateComponentName(Component.name, instance.appContext.config)
@@ -617,30 +653,43 @@ function setupStatefulComponent(
     }
   }
   // 0. create render proxy property access cache
+  // 0. 创建缓存
   instance.accessCache = Object.create(null)
+
   // 1. create public instance / render proxy
   // also mark it raw so it's never observed
+  // 创建一个渲染属性访问代理，同时标记其不能被观察
   instance.proxy = markRaw(new Proxy(instance.ctx, PublicInstanceProxyHandlers))
   if (__DEV__) {
     exposePropsOnRenderContext(instance)
   }
+
   // 2. call setup()
+  // 2. 调用setup函数
   const { setup } = Component
   if (setup) {
+    // 创建setup调用上下文(即我们传入setup函数的参数，仅在我们定义了参数时创建)
     const setupContext = (instance.setupContext =
       setup.length > 1 ? createSetupContext(instance) : null)
 
     setCurrentInstance(instance)
     pauseTracking()
+
+    // 调用setup函数，获取返回的state
     const setupResult = callWithErrorHandling(
       setup,
       instance,
       ErrorCodes.SETUP_FUNCTION,
+
+      // 传入props，setup上下文作为参数
       [__DEV__ ? shallowReadonly(instance.props) : instance.props, setupContext]
     )
+
+    // 结束跟踪
     resetTracking()
     unsetCurrentInstance()
 
+    // setup返回的是否为Promise(用于悬疑组件)
     if (isPromise(setupResult)) {
       setupResult.then(unsetCurrentInstance, unsetCurrentInstance)
 
@@ -664,9 +713,11 @@ function setupStatefulComponent(
         )
       }
     } else {
+      // 处理setup返回结果
       handleSetupResult(instance, setupResult, isSSR)
     }
   } else {
+    // 解析模板，生成render函数
     finishComponentSetup(instance, isSSR)
   }
 }
@@ -676,6 +727,7 @@ export function handleSetupResult(
   setupResult: unknown,
   isSSR: boolean
 ) {
+  // 返回结果为函数(JSX)或返回一个内联render函数
   if (isFunction(setupResult)) {
     // setup returned an inline render function
     if (__NODE_JS__ && (instance.type as ComponentOptions).__ssrInlineRender) {
@@ -685,6 +737,8 @@ export function handleSetupResult(
     } else {
       instance.render = setupResult as InternalRenderFunction
     }
+
+    // 返回对象设置renderState
   } else if (isObject(setupResult)) {
     if (__DEV__ && isVNode(setupResult)) {
       warn(
@@ -701,6 +755,8 @@ export function handleSetupResult(
     if (__DEV__) {
       exposeSetupStateOnRenderContext(instance)
     }
+
+    // 未返回任何数据时报错
   } else if (__DEV__ && setupResult !== undefined) {
     warn(
       `setup() should return an object. Received: ${
@@ -708,6 +764,8 @@ export function handleSetupResult(
       }`
     )
   }
+
+  // 解析模板，生成render函数
   finishComponentSetup(instance, isSSR)
 }
 
@@ -716,6 +774,7 @@ type CompileFunction = (
   options?: CompilerOptions
 ) => InternalRenderFunction
 
+// 运行时编译函数(编译template)
 let compile: CompileFunction | undefined
 let installWithProxy: (i: ComponentInternalInstance) => void
 
@@ -724,7 +783,7 @@ let installWithProxy: (i: ComponentInternalInstance) => void
  * Note the exported method uses any to avoid d.ts relying on the compiler types.
  */
 export function registerRuntimeCompiler(_compile: any) {
-  compile = _compile
+  compile = _compile // 即compileToFunction函数
   installWithProxy = i => {
     if (i.render!._rc) {
       i.withProxy = new Proxy(i.ctx, RuntimeCompiledPublicInstanceProxyHandlers)
@@ -760,9 +819,13 @@ export function finishComponentSetup(
     instance.render = (instance.render ||
       Component.render ||
       NOOP) as InternalRenderFunction
+
+    // 未定义render函数时(模板)
   } else if (!instance.render) {
     // could be set from setup()
+    // 函数未定义显式render函数时(即使用template)
     if (compile && !Component.render) {
+      // 获取现有的模板
       const template =
         (__COMPAT__ &&
           instance.vnode.props &&
@@ -792,6 +855,8 @@ export function finishComponentSetup(
             extend(finalCompilerOptions.compatConfig, Component.compatConfig)
           }
         }
+
+        // 编译模板生成render函数
         Component.render = compile(template, finalCompilerOptions)
         if (__DEV__) {
           endMeasure(instance, `compile`)
@@ -810,6 +875,7 @@ export function finishComponentSetup(
   }
 
   // support for 2.x options
+  // 兼容options语法
   if (__FEATURE_OPTIONS_API__ && !(__COMPAT__ && skipOptions)) {
     setCurrentInstance(instance)
     pauseTracking()
@@ -840,6 +906,7 @@ export function finishComponentSetup(
   }
 }
 
+// 创建$attrs代理，只可读
 function createAttrsProxy(instance: ComponentInternalInstance): Data {
   return new Proxy(
     instance.attrs,

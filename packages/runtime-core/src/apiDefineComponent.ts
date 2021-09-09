@@ -180,6 +180,8 @@ export function defineComponent<
 ): DefineComponent<PropsOptions, RawBindings, D, C, M, Mixin, Extends, E, EE>
 
 // implementation, close to no-op
+// 动态创建组件，根据是否为函数来创建
+// 函数则为复合式组件；其余为对象式组件
 export function defineComponent(options: unknown) {
   return isFunction(options) ? { setup: options, name: options.name } : options
 }

@@ -1,3 +1,6 @@
+/**
+ * 全局bitmap槽位一共有9个操作位，分别代表如下
+ */
 export const enum ShapeFlags {
   ELEMENT = 1,
   FUNCTIONAL_COMPONENT = 1 << 1,
@@ -9,5 +12,7 @@ export const enum ShapeFlags {
   SUSPENSE = 1 << 7,
   COMPONENT_SHOULD_KEEP_ALIVE = 1 << 8,
   COMPONENT_KEPT_ALIVE = 1 << 9,
+
+  // 组件为110
   COMPONENT = ShapeFlags.STATEFUL_COMPONENT | ShapeFlags.FUNCTIONAL_COMPONENT
 }

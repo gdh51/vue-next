@@ -13,11 +13,14 @@ if (__DEV__) {
 
 const compileCache: Record<string, RenderFunction> = Object.create(null)
 
+// 编译模板函数
 function compileToFunction(
   template: string | HTMLElement,
   options?: CompilerOptions
 ): RenderFunction {
+  // 非字符串模板时
   if (!isString(template)) {
+    // 当其为一个元素时，取其innerHTML
     if (template.nodeType) {
       template = template.innerHTML
     } else {
@@ -27,11 +30,16 @@ function compileToFunction(
   }
 
   const key = template
+
+  // 缓存编译函数缓存
   const cached = compileCache[key]
+
+  // 有缓存时直接返回
   if (cached) {
     return cached
   }
 
+  // 如果模板为一个CSS选择器，则直接查找对应的元素
   if (template[0] === '#') {
     const el = document.querySelector(template)
     if (__DEV__ && !el) {
@@ -41,9 +49,11 @@ function compileToFunction(
     // Reason: potential execution of JS expressions in in-DOM template.
     // The user must make sure the in-DOM template is trusted. If it's rendered
     // by the server, the template should not contain any user data.
+    // 同样的取该元素的innerHTML
     template = el ? el.innerHTML : ``
   }
 
+  // 正式编译模板，返回最终的函数
   const { code } = compile(
     template,
     extend(
@@ -74,13 +84,14 @@ function compileToFunction(
   // with keys that cannot be mangled, and can be quite heavy size-wise.
   // In the global build we know `Vue` is available globally so we can avoid
   // the wildcard object.
+  // 返回渲染函数(注意这里调用了次，因为其内部有个闭包)
   const render = (
     __GLOBAL__ ? new Function(code)() : new Function('Vue', code)(runtimeDom)
   ) as RenderFunction
 
   // mark the function as runtime compiled
   ;(render as InternalRenderFunction)._rc = true
-
+  // 缓存
   return (compileCache[key] = render)
 }
 

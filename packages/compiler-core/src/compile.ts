@@ -28,12 +28,21 @@ export function getBaseTransformPreset(
   prefixIdentifiers?: boolean
 ): TransformPreset {
   return [
+    // 节点预设
     [
       transformOnce,
       transformIf,
+
+      // 处理v-memo
       transformMemo,
+
+      // 处理v-for
       transformFor,
+
+      // 兼容模式，v3为空数组
       ...(__COMPAT__ ? [transformFilter] : []),
+
+      // 浏览器生产模式下为空数组
       ...(!__BROWSER__ && prefixIdentifiers
         ? [
             // order is important
@@ -45,9 +54,15 @@ export function getBaseTransformPreset(
         : []),
       transformSlotOutlet,
       transformElement,
+
+      // 处理作用域插槽
       trackSlotScopes,
+
+      // 优化合并相邻节点
       transformText
     ],
+
+    // 指令预设
     {
       on: transformOn,
       bind: transformBind,
@@ -64,6 +79,7 @@ export function baseCompile(
 ): CodegenResult {
   const onError = options.onError || defaultOnError
   const isModuleMode = options.mode === 'module'
+
   /* istanbul ignore if */
   if (__BROWSER__) {
     if (options.prefixIdentifiers === true) {
@@ -82,6 +98,7 @@ export function baseCompile(
     onError(createCompilerError(ErrorCodes.X_SCOPE_ID_NOT_SUPPORTED))
   }
 
+  // 将模板节点解析为ast🌲返回
   const ast = isString(template) ? baseParse(template, options) : template
   const [nodeTransforms, directiveTransforms] =
     getBaseTransformPreset(prefixIdentifiers)
@@ -101,6 +118,7 @@ export function baseCompile(
     })
   )
 
+  // 生成具体代码
   return generate(
     ast,
     extend({}, options, {

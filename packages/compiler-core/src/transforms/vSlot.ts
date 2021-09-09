@@ -45,6 +45,7 @@ const defaultFallback = createSimpleExpression(`undefined`, false)
 //    Note the exit callback is executed before buildSlots() on the same node,
 //    so only nested slots see positive numbers.
 export const trackSlotScopes: NodeTransform = (node, context) => {
+  // 组件或模板
   if (
     node.type === NodeTypes.ELEMENT &&
     (node.tagType === ElementTypes.COMPONENT ||
@@ -52,12 +53,17 @@ export const trackSlotScopes: NodeTransform = (node, context) => {
   ) {
     // We are only checking non-empty v-slot here
     // since we only care about slots that introduce scope variables.
+    // 确认元素具有v-slot属性
     const vSlot = findDir(node, 'slot')
     if (vSlot) {
       const slotProps = vSlot.exp
+
+      // 非浏览器
       if (!__BROWSER__ && context.prefixIdentifiers) {
         slotProps && context.addIdentifiers(slotProps)
       }
+
+      // 添加depth
       context.scopes.vSlot++
       return () => {
         if (!__BROWSER__ && context.prefixIdentifiers) {
@@ -104,6 +110,7 @@ export type SlotFnBuilder = (
   loc: SourceLocation
 ) => FunctionExpression
 
+// 创建一个函数表达式，props作为参数，children作为返回值
 const buildClientSlotFn: SlotFnBuilder = (props, children, loc) =>
   createFunctionExpression(
     props,
@@ -123,32 +130,47 @@ export function buildSlots(
   slots: SlotsExpression
   hasDynamicSlots: boolean
 } {
+  // 记录withCtx函数
   context.helper(WITH_CTX)
 
+  // 获取组件节点的内容
   const { children, loc } = node
+
+  // 所有的命名插槽都将以对象的形式被收集到此处
   const slotsProperties: Property[] = []
   const dynamicSlots: (ConditionalExpression | CallExpression)[] = []
 
   // If the slot is inside a v-for or another v-slot, force it to be dynamic
   // since it likely uses a scope variable.
+  // 当当前插槽内容已经处于v-for或另一个插槽中，
+  // 强制其为动态插槽
   let hasDynamicSlots = context.scopes.vSlot > 0 || context.scopes.vFor > 0
+
   // with `prefixIdentifiers: true`, this can be further optimized to make
   // it dynamic only when the slot actually uses the scope variables.
+  // 非浏览器环境
   if (!__BROWSER__ && !context.ssr && context.prefixIdentifiers) {
     hasDynamicSlots = hasScopeRef(node, context.identifiers)
   }
 
   // 1. Check for slot with slotProps on component itself.
-  //    <Comp v-slot="{ prop }"/>
+  //    <Comp v-slot="{ prop }"/>就是这种情况
+  // 确认是否在组件上使用插槽
   const onComponentSlot = findDir(node, 'slot', true)
   if (onComponentSlot) {
     const { arg, exp } = onComponentSlot
+
+    // 动态插槽名称
     if (arg && !isStaticExp(arg)) {
       hasDynamicSlots = true
     }
+
+    // 创建一个对象表达式{ default: fn }
     slotsProperties.push(
       createObjectProperty(
         arg || createSimpleExpression('default', true),
+
+        // 为插槽内容创建函数表达式
         buildSlotFn(exp, children, loc)
       )
     )
@@ -158,24 +180,31 @@ export function buildSlots(
   //    <template v-slot:foo="{ prop }">
   let hasTemplateSlots = false
   let hasNamedDefaultSlot = false
+
+  // 默认插槽节点合集
   const implicitDefaultChildren: TemplateChildNode[] = []
   const seenSlotNames = new Set<string>()
 
+  // 遍历组件节点，找到作为插槽的节点
   for (let i = 0; i < children.length; i++) {
     const slotElement = children[i]
     let slotDir
 
+    // 非模板元素或不具有插槽属性的节点
+    // 则视为默认插槽内容
     if (
       !isTemplateNode(slotElement) ||
       !(slotDir = findDir(slotElement, 'slot', true))
     ) {
       // not a <template v-slot>, skip.
+      // 非注释节点
       if (slotElement.type !== NodeTypes.COMMENT) {
         implicitDefaultChildren.push(slotElement)
       }
       continue
     }
 
+    // 同时在组件上使用插槽属性时，报错
     if (onComponentSlot) {
       // already has on-component slot - this is incorrect usage.
       context.onError(
@@ -185,7 +214,10 @@ export function buildSlots(
     }
 
     hasTemplateSlots = true
+
+    // slotElement就为template
     const { children: slotChildren, loc: slotLoc } = slotElement
+
     const {
       arg: slotName = createSimpleExpression(`default`, true),
       exp: slotProps,
@@ -193,6 +225,7 @@ export function buildSlots(
     } = slotDir
 
     // check if name is dynamic.
+    // 动态插槽名称
     let staticSlotName: string | undefined
     if (isStaticExp(slotName)) {
       staticSlotName = slotName ? slotName.content : `default`
@@ -200,11 +233,15 @@ export function buildSlots(
       hasDynamicSlots = true
     }
 
+    // 为当前命名插槽创建插槽函数
     const slotFunction = buildSlotFn(slotProps, slotChildren, slotLoc)
+
     // check if this slot is conditional (v-if/v-for)
     let vIf: DirectiveNode | undefined
     let vElse: DirectiveNode | undefined
     let vFor: DirectiveNode | undefined
+
+    // 条件显示，包裹添加ast语句
     if ((vIf = findDir(slotElement, 'if'))) {
       hasDynamicSlots = true
       dynamicSlots.push(
@@ -214,10 +251,13 @@ export function buildSlots(
           defaultFallback
         )
       )
+
+      // v-else(-if)
     } else if (
       (vElse = findDir(slotElement, /^else(-if)?$/, true /* allowEmpty */))
     ) {
       // find adjacent v-if
+      // 找到最近的v-if
       let j = i
       let prev
       while (j--) {
@@ -226,6 +266,8 @@ export function buildSlots(
           break
         }
       }
+
+      // 必须为模板
       if (prev && isTemplateNode(prev) && findDir(prev, 'if')) {
         // remove node
         children.splice(i, 1)
@@ -247,6 +289,8 @@ export function buildSlots(
               defaultFallback
             )
           : buildDynamicSlot(slotName, slotFunction)
+
+        // 找不到报错
       } else {
         context.onError(
           createCompilerError(ErrorCodes.X_V_ELSE_NO_ADJACENT_IF, vElse.loc)
@@ -334,12 +378,15 @@ export function buildSlots(
     }
   }
 
+  // 计算slotFlag
   const slotFlag = hasDynamicSlots
     ? SlotFlags.DYNAMIC
-    : hasForwardedSlots(node.children)
+    : // 在使用组件的插槽中，设置插槽
+    hasForwardedSlots(node.children)
     ? SlotFlags.FORWARDED
     : SlotFlags.STABLE
 
+  // 创建插槽表达式
   let slots = createObjectExpression(
     slotsProperties.concat(
       createObjectProperty(
@@ -354,6 +401,8 @@ export function buildSlots(
     ),
     loc
   ) as SlotsExpression
+
+  // 具有动态插槽时，创建新的调用表达式
   if (dynamicSlots.length) {
     slots = createCallExpression(context.helper(CREATE_SLOTS), [
       slots,
@@ -377,6 +426,7 @@ function buildDynamicSlot(
   ])
 }
 
+// 子节点中是否还含有插槽
 function hasForwardedSlots(children: TemplateChildNode[]): boolean {
   for (let i = 0; i < children.length; i++) {
     const child = children[i]

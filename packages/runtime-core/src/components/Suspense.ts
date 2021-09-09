@@ -756,15 +756,21 @@ function normalizeSuspenseSlot(s: any) {
 }
 
 export function queueEffectWithSuspense(
+  // 原effect
   fn: Function | Function[],
+
+  // 是否为悬挂组件
   suspense: SuspenseBoundary | null
 ): void {
+  // 如果未悬挂组件，则加入对应悬挂组件的pendingBranch中
   if (suspense && suspense.pendingBranch) {
     if (isArray(fn)) {
       suspense.effects.push(...fn)
     } else {
       suspense.effects.push(fn)
     }
+
+    // 普通组件之间加入
   } else {
     queuePostFlushCb(fn)
   }

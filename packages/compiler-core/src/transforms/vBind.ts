@@ -12,13 +12,17 @@ import { CAMELIZE } from '../runtimeHelpers'
 // v-bind without arg is handled directly in ./transformElements.ts due to it affecting
 // codegen for the entire props object. This transform here is only for v-bind
 // *with* args.
+// 该函数只处理具体制定绑定属性的v-bind
 export const transformBind: DirectiveTransform = (dir, _node, context) => {
   const { exp, modifiers, loc } = dir
   const arg = dir.arg!
 
+  // 复合表达式
   if (arg.type !== NodeTypes.SIMPLE_EXPRESSION) {
     arg.children.unshift(`(`)
     arg.children.push(`) || ""`)
+
+    // 动态key表达式
   } else if (!arg.isStatic) {
     arg.content = `${arg.content} || ""`
   }

@@ -60,20 +60,34 @@ export function renderComponentRoot(
   } = instance
 
   let result
+
+  // 设置当前渲染实例，返回父级实例
   const prev = setCurrentRenderingInstance(instance)
+
   if (__DEV__) {
     accessedAttrs = false
   }
+
   try {
+    // 穿透属性
     let fallthroughAttrs
+
+    // 确认为状态组件
     if (vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT) {
       // withProxy is a proxy with a different `has` trap only for
       // runtime-compiled render functions using `with` block.
       const proxyToUse = withProxy || proxy
+
+      // 将渲染函数返回结果进行处理
       result = normalizeVNode(
+        // 调用render函数，获取VNode
         render!.call(
           proxyToUse,
+
+          // 上下文访问拦截器，不同运行环境不同
           proxyToUse!,
+
+          // 渲染缓存，缓存VNode的
           renderCache,
           props,
           setupState,
@@ -81,9 +95,12 @@ export function renderComponentRoot(
           ctx
         )
       )
+
+      // 属性穿透
       fallthroughAttrs = attrs
     } else {
       // functional
+      // 函数式组件处理
       const render = Component as FunctionalComponent
       // in dev, mark attrs accessed if optional props (attrs === props)
       if (__DEV__ && attrs === props) {
@@ -116,6 +133,8 @@ export function renderComponentRoot(
     // to have comments along side the root element which makes it a fragment
     let root = result
     let setRoot: ((root: VNode) => void) | undefined = undefined
+
+    // 开发模式下，根节点使用片段
     if (
       __DEV__ &&
       result.patchFlag > 0 &&
@@ -124,11 +143,17 @@ export function renderComponentRoot(
       ;[root, setRoot] = getChildRoot(result)
     }
 
+    // 允许继承属性时处理
     if (fallthroughAttrs && inheritAttrs !== false) {
+      // 查看是否有透传属性
       const keys = Object.keys(fallthroughAttrs)
+
+      // 获取当前根节点的ShapeFlag
       const { shapeFlag } = root
       if (keys.length) {
+        // 当其为元素或组件时
         if (shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.COMPONENT)) {
+          // 处理v-model修饰符
           if (propsOptions && keys.some(isModelListener)) {
             // If a v-model listener (onUpdate:xxx) has a corresponding declared
             // prop, it indicates this component expects to handle v-model and
@@ -139,6 +164,8 @@ export function renderComponentRoot(
               propsOptions
             )
           }
+
+          // 克隆并注入新的属性
           root = cloneVNode(root, fallthroughAttrs)
         } else if (__DEV__ && !accessedAttrs && root.type !== Comment) {
           const allAttrs = Object.keys(attrs)
@@ -146,17 +173,24 @@ export function renderComponentRoot(
           const extraAttrs: string[] = []
           for (let i = 0, l = allAttrs.length; i < l; i++) {
             const key = allAttrs[i]
+
+            // 是否为事件
             if (isOn(key)) {
               // ignore v-model handlers when they fail to fallthrough
+              // 除去v-model的事件
               if (!isModelListener(key)) {
                 // remove `on`, lowercase first letter to reflect event casing
                 // accurately
                 eventAttrs.push(key[2].toLowerCase() + key.slice(3))
               }
+
+              // 非事件
             } else {
               extraAttrs.push(key)
             }
           }
+
+          // 报错，属性透传到了fragment或文本节点上
           if (extraAttrs.length) {
             warn(
               `Extraneous non-props attributes (` +
@@ -165,6 +199,8 @@ export function renderComponentRoot(
                 `because component renders fragment or text root nodes.`
             )
           }
+
+          // 报错，未定义对应的emits
           if (eventAttrs.length) {
             warn(
               `Extraneous non-emits event listeners (` +
@@ -179,6 +215,7 @@ export function renderComponentRoot(
       }
     }
 
+    // 兼容
     if (
       __COMPAT__ &&
       isCompatEnabled(DeprecationTypes.INSTANCE_ATTRS_CLASS_STYLE, instance) &&
@@ -202,6 +239,7 @@ export function renderComponentRoot(
     }
 
     // inherit directives
+    // 继承指令
     if (vnode.dirs) {
       if (__DEV__ && !isElementRoot(root)) {
         warn(
@@ -211,7 +249,9 @@ export function renderComponentRoot(
       }
       root.dirs = root.dirs ? root.dirs.concat(vnode.dirs) : vnode.dirs
     }
+
     // inherit transition data
+    // 继承过渡动画属性
     if (vnode.transition) {
       if (__DEV__ && !isElementRoot(root)) {
         warn(
@@ -233,6 +273,7 @@ export function renderComponentRoot(
     result = createVNode(Comment)
   }
 
+  // 还原当前渲染实例
   setCurrentRenderingInstance(prev)
   return result
 }

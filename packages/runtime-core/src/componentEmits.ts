@@ -69,18 +69,21 @@ export type EmitFn<
     >
 
 export function emit(
-  instance: ComponentInternalInstance,
-  event: string,
-  ...rawArgs: any[]
+  instance: ComponentInternalInstance, //当前上下文
+  event: string, // 事件名称
+  ...rawArgs: any[] // 事件参数
 ) {
+  // 获取props
   const props = instance.vnode.props || EMPTY_OBJ
 
+  // 本地开发模式下，检查
   if (__DEV__) {
     const {
       emitsOptions,
       propsOptions: [propsOptions]
     } = instance
     if (emitsOptions) {
+      // 当前事件不在emits定义内时(排除两个兼容的特殊的事件)
       if (
         !(event in emitsOptions) &&
         !(
@@ -89,6 +92,7 @@ export function emit(
             event.startsWith(compatModelEventPrefix))
         )
       ) {
+        // 且该事件处理函数未定义在props中(以onEvent的形式)
         if (!propsOptions || !(toHandlerKey(event) in propsOptions)) {
           warn(
             `Component emitted event "${event}" but it is neither declared in ` +
@@ -96,6 +100,7 @@ export function emit(
           )
         }
       } else {
+        // 事件存在时，验证其是否通过校验器
         const validator = emitsOptions[event]
         if (isFunction(validator)) {
           const isValid = validator(...rawArgs)
@@ -110,14 +115,22 @@ export function emit(
   }
 
   let args = rawArgs
+
+  // 是否为v-model事件
   const isModelListener = event.startsWith('update:')
 
   // for v-model update:xxx events, apply modifiers on args
+  // 提取事件名称
   const modelArg = isModelListener && event.slice(7)
+
+  // 确保用户有与事件对于的prop
   if (modelArg && modelArg in props) {
+    // 获取对应修饰器
     const modifiersKey = `${
       modelArg === 'modelValue' ? 'model' : modelArg
     }Modifiers`
+
+    // 修饰器处理
     const { number, trim } = props[modifiersKey] || EMPTY_OBJ
     if (trim) {
       args = rawArgs.map(a => a.trim())
@@ -189,21 +202,26 @@ export function emit(
 }
 
 export function normalizeEmitsOptions(
-  comp: ConcreteComponent,
+  comp: ConcreteComponent, // 组件配置对象
   appContext: AppContext,
   asMixin = false
 ): ObjectEmitsOptions | null {
   const cache = appContext.emitsCache
   const cached = cache.get(comp)
+
+  // 优先从当前应用缓存中获取emits(可以缓存null)
   if (cached !== undefined) {
     return cached
   }
 
+  // 获取当前组件能发出的自定义事件
   const raw = comp.emits
   let normalized: ObjectEmitsOptions = {}
 
   // apply mixin/extends props
   let hasExtends = false
+
+  // 支持options语法
   if (__FEATURE_OPTIONS_API__ && !isFunction(comp)) {
     const extendEmits = (raw: ComponentOptions) => {
       const normalizedFromExtend = normalizeEmitsOptions(raw, appContext, true)
@@ -212,28 +230,39 @@ export function normalizeEmitsOptions(
         extend(normalized, normalizedFromExtend)
       }
     }
+
+    // 继承应用下全局(非mixin)
     if (!asMixin && appContext.mixins.length) {
       appContext.mixins.forEach(extendEmits)
     }
+
+    // 组件拓展式继承
     if (comp.extends) {
       extendEmits(comp.extends)
     }
+
+    // 从当前组件的minxin中获取
     if (comp.mixins) {
       comp.mixins.forEach(extendEmits)
     }
   }
 
+  // 未定义或继承时，设置当前组件缓存并退出
   if (!raw && !hasExtends) {
     cache.set(comp, null)
     return null
   }
 
+  // 数组形式时，简单格式化
   if (isArray(raw)) {
     raw.forEach(key => (normalized[key] = null))
+
+    // 对象形式时，简单合并
   } else {
     extend(normalized, raw)
   }
 
+  // 设置缓存
   cache.set(comp, normalized)
   return normalized
 }

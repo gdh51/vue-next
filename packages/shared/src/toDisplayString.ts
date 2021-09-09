@@ -10,6 +10,7 @@ import {
 
 /**
  * For converting {{ interpolation }} values to displayed strings.
+ * 处理插值表达式
  * @private
  */
 export const toDisplayString = (val: unknown): string => {

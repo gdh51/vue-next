@@ -130,8 +130,11 @@ export const initSlots = (
   instance: ComponentInternalInstance,
   children: VNodeNormalizedChildren
 ) => {
+  // 确认其具有插槽内容
   if (instance.vnode.shapeFlag & ShapeFlags.SLOTS_CHILDREN) {
+    // 获取当前插槽内容的类型，根据类型不同对渲染有不同要求
     const type = (children as RawSlots)._
+
     if (type) {
       // users can get the shallow readonly version of the slots object through `this.$slots`,
       // we should avoid the proxy object polluting the slots of the internal instance
@@ -145,8 +148,11 @@ export const initSlots = (
         instance
       )
     }
+
+    // 无插槽内容
   } else {
     instance.slots = {}
+
     if (children) {
       normalizeVNodeSlots(instance, children)
     }

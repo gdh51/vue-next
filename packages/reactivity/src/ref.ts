@@ -46,6 +46,8 @@ export function trackRefValue(ref: RefBase<any>) {
 
 export function triggerRefValue(ref: RefBase<any>, newVal?: any) {
   ref = toRaw(ref)
+
+  // 触发当前依赖项通知effect更新
   if (ref.dep) {
     if (__DEV__) {
       triggerEffects(ref.dep, {
@@ -67,6 +69,7 @@ export type ToRefs<T = any> = {
   [K in keyof T]: T[K] extends Ref ? T[K] : Ref<UnwrapRef<T[K]>>
 }
 
+// 根据传入值决定是否响应化
 const convert = <T extends unknown>(val: T): T =>
   isObject(val) ? reactive(val) : val
 
@@ -78,6 +81,8 @@ export function isRef(r: any): r is Ref {
 export function ref<T extends object>(value: T): ToRef<T>
 export function ref<T>(value: T): Ref<UnwrapRef<T>>
 export function ref<T = any>(): Ref<T | undefined>
+
+// 创建引用
 export function ref(value?: unknown) {
   return createRef(value)
 }
@@ -103,15 +108,19 @@ class RefImpl<T> {
     this._value = _shallow ? value : convert(value)
   }
 
+  // 访问value值时进行依赖追踪，然后返回原值
   get value() {
     trackRefValue(this)
     return this._value
   }
 
   set value(newVal) {
+    // 根据是否shallow获取新值
     newVal = this._shallow ? newVal : toRaw(newVal)
     if (hasChanged(newVal, this._rawValue)) {
       this._rawValue = newVal
+
+      // 按值类型进行响应化处理
       this._value = this._shallow ? newVal : convert(newVal)
       triggerRefValue(this, newVal)
     }
@@ -119,12 +128,16 @@ class RefImpl<T> {
 }
 
 function createRef(rawValue: unknown, shallow = false) {
+  // 已为引用时直接返回
   if (isRef(rawValue)) {
     return rawValue
   }
+
+  // 创建引用对象
   return new RefImpl(rawValue, shallow)
 }
 
+// 触发追踪当前ref的副作用函数更新
 export function triggerRef(ref: Ref) {
   triggerRefValue(ref, __DEV__ ? ref.value : void 0)
 }
@@ -133,19 +146,25 @@ export function unref<T>(ref: T | Ref<T>): T {
   return isRef(ref) ? (ref.value as any) : ref
 }
 
+// 一个拦截器，访问器自动取值引用对象(不用通过.value)
 const shallowUnwrapHandlers: ProxyHandler<any> = {
   get: (target, key, receiver) => unref(Reflect.get(target, key, receiver)),
   set: (target, key, value, receiver) => {
     const oldValue = target[key]
+
+    // 为引用对象设置新值时，直接替换其.value
     if (isRef(oldValue) && !isRef(value)) {
       oldValue.value = value
       return true
+
+      // 其余直接设置值即可
     } else {
       return Reflect.set(target, key, value, receiver)
     }
   }
 }
 
+// 自动安全取值引用对象
 export function proxyRefs<T extends object>(
   objectWithRefs: T
 ): ShallowUnwrapRef<T> {
@@ -171,10 +190,13 @@ class CustomRefImpl<T> {
   public readonly __v_isRef = true
 
   constructor(factory: CustomRefFactory<T>) {
+    // 调用工厂函数，会传入追踪和触发副作用函数更新的函数作为参数
     const { get, set } = factory(
       () => trackRefValue(this),
       () => triggerRefValue(this)
     )
+
+    // 应用getter与setter
     this._get = get
     this._set = set
   }
@@ -188,10 +210,12 @@ class CustomRefImpl<T> {
   }
 }
 
+// 创建一个自定义的ref，自定义get和set行为
 export function customRef<T>(factory: CustomRefFactory<T>): Ref<T> {
   return new CustomRefImpl(factory) as any
 }
 
+// toRefs则是手动遍历调用toRef
 export function toRefs<T extends object>(object: T): ToRefs<T> {
   if (__DEV__ && !isProxy(object)) {
     console.warn(`toRefs() expects a reactive object but received a plain one.`)
@@ -203,6 +227,7 @@ export function toRefs<T extends object>(object: T): ToRefs<T> {
   return ret
 }
 
+// 间接的帮你访问响应式对象
 class ObjectRefImpl<T extends object, K extends keyof T> {
   public readonly __v_isRef = true
 
@@ -217,6 +242,7 @@ class ObjectRefImpl<T extends object, K extends keyof T> {
   }
 }
 
+// 提取某个响应式对象键名的引用
 export function toRef<T extends object, K extends keyof T>(
   object: T,
   key: K
@@ -273,7 +299,5 @@ export type UnwrapRefSimple<T> = T extends
   : T extends Array<any>
   ? { [K in keyof T]: UnwrapRefSimple<T[K]> }
   : T extends object
-  ? {
-      [P in keyof T]: P extends symbol ? T[P] : UnwrapRef<T[P]>
-    }
+  ? { [P in keyof T]: P extends symbol ? T[P] : UnwrapRef<T[P]> }
   : T

@@ -7,10 +7,12 @@ const doc = (typeof document !== 'undefined' ? document : null) as Document
 const staticTemplateCache = new Map<string, DocumentFragment>()
 
 export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
+  // 将child插入到锚点anchor元素前
   insert: (child, parent, anchor) => {
     parent.insertBefore(child, anchor || null)
   },
 
+  // 移除child节点
   remove: child => {
     const parent = child.parentNode
     if (parent) {
@@ -72,9 +74,11 @@ export const nodeOps: Omit<RendererOptions<Node, Element>, 'patchProp'> = {
   // __UNSAFE__
   // Reason: innerHTML.
   // Static content here can only come from compiled templates.
+  // 静态内容只会来自于模板编译
   // As long as the user only uses trusted templates, this is safe.
   insertStaticContent(content, parent, anchor, isSVG) {
     // <parent> before | first ... last | anchor </parent>
+    // 记录当前锚点的前一个元素
     const before = anchor ? anchor.previousSibling : parent.lastChild
     let template = staticTemplateCache.get(content)
     if (!template) {

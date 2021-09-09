@@ -198,6 +198,8 @@ export function advancePositionWithMutation(
   numberOfCharacters: number = source.length
 ): Position {
   let linesCount = 0
+
+  // 最后一个换行符位置
   let lastNewLinePos = -1
   for (let i = 0; i < numberOfCharacters; i++) {
     if (source.charCodeAt(i) === 10 /* newline char code */) {
@@ -206,6 +208,7 @@ export function advancePositionWithMutation(
     }
   }
 
+  // 更新解析上下文信息
   pos.offset += numberOfCharacters
   pos.line += linesCount
   pos.column =
@@ -223,6 +226,7 @@ export function assert(condition: boolean, msg?: string) {
   }
 }
 
+// 寻找对应名称的指令ast
 export function findDir(
   node: ElementNode,
   name: string | RegExp,
@@ -364,11 +368,16 @@ export function injectProp(
 
   if (props == null || isString(props)) {
     propsWithInjection = createObjectExpression([prop])
+
+    // 若属性为JS调用表达式
   } else if (props.type === NodeTypes.JS_CALL_EXPRESSION) {
     // merged props... add ours
     // only inject key to object literal if it's the first argument so that
     // if doesn't override user provided keys
+    // 添加到第一个位置，这样不会重新用户的key
     const first = props.arguments[0] as string | JSChildNode
+
+    // 已为ast化表达式时，直接加入到第一个位置
     if (!isString(first) && first.type === NodeTypes.JS_OBJECT_EXPRESSION) {
       first.properties.unshift(prop)
     } else {
@@ -383,17 +392,26 @@ export function injectProp(
       }
     }
     !propsWithInjection && (propsWithInjection = props)
+
+    // 当其属性已为对象表达式时
   } else if (props.type === NodeTypes.JS_OBJECT_EXPRESSION) {
     let alreadyExists = false
+
     // check existing key to avoid overriding user provided keys
+    // 检查key值是否存在，防止重写用户key值
     if (prop.key.type === NodeTypes.SIMPLE_EXPRESSION) {
+      // 要添加的key值
       const propKeyName = prop.key.content
+
+      // 遍历检查
       alreadyExists = props.properties.some(
         p =>
           p.key.type === NodeTypes.SIMPLE_EXPRESSION &&
           p.key.content === propKeyName
       )
     }
+
+    // 不存在时添加
     if (!alreadyExists) {
       props.properties.unshift(prop)
     }
