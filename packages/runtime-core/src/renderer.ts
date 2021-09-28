@@ -342,16 +342,10 @@ function baseCreateRenderer(
     initFeatureFlags()
   }
 
-  // 生成工具
+  const target = getGlobalThis()
+  target.__VUE__ = true
   if (__DEV__ || __FEATURE_PROD_DEVTOOLS__) {
-    // 获取全局对象
-    const target = getGlobalThis()
-
-    // 标记已有vue
-    target.__VUE__ = true
-
-    // 设置devtool
-    setDevtoolsHook(target.__VUE_DEVTOOLS_GLOBAL_HOOK__)
+    setDevtoolsHook(target.__VUE_DEVTOOLS_GLOBAL_HOOK__, target)
   }
 
   const {

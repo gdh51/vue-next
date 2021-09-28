@@ -180,6 +180,16 @@ export function processIf(
 
       // 找到最近的条件容器节点
       if (sibling && sibling.type === NodeTypes.IF) {
+        // Check if v-else was followed by v-else-if
+        if (
+          dir.name === 'else-if' &&
+          sibling.branches[sibling.branches.length - 1].condition === undefined
+        ) {
+          context.onError(
+            createCompilerError(ErrorCodes.X_V_ELSE_NO_ADJACENT_IF, node.loc)
+          )
+        }
+
         // move the node to the if node's branches
 
         // 从上下文和父级中移除当前else节点，并创建分支容器

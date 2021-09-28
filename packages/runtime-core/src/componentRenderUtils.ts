@@ -60,8 +60,7 @@ export function renderComponentRoot(
   } = instance
 
   let result
-
-  // 设置当前渲染实例，返回父级实例
+  let fallthroughAttrs
   const prev = setCurrentRenderingInstance(instance)
 
   if (__DEV__) {
@@ -69,10 +68,6 @@ export function renderComponentRoot(
   }
 
   try {
-    // 穿透属性
-    let fallthroughAttrs
-
-    // 确认为状态组件
     if (vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT) {
       // withProxy is a proxy with a different `has` trap only for
       // runtime-compiled render functions using `with` block.
@@ -127,150 +122,127 @@ export function renderComponentRoot(
         ? attrs
         : getFunctionalFallthrough(attrs)
     }
-
-    // attr merging
-    // in dev mode, comments are preserved, and it's possible for a template
-    // to have comments along side the root element which makes it a fragment
-    let root = result
-    let setRoot: ((root: VNode) => void) | undefined = undefined
-
-    // 开发模式下，根节点使用片段
-    if (
-      __DEV__ &&
-      result.patchFlag > 0 &&
-      result.patchFlag & PatchFlags.DEV_ROOT_FRAGMENT
-    ) {
-      ;[root, setRoot] = getChildRoot(result)
-    }
-
-    // 允许继承属性时处理
-    if (fallthroughAttrs && inheritAttrs !== false) {
-      // 查看是否有透传属性
-      const keys = Object.keys(fallthroughAttrs)
-
-      // 获取当前根节点的ShapeFlag
-      const { shapeFlag } = root
-      if (keys.length) {
-        // 当其为元素或组件时
-        if (shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.COMPONENT)) {
-          // 处理v-model修饰符
-          if (propsOptions && keys.some(isModelListener)) {
-            // If a v-model listener (onUpdate:xxx) has a corresponding declared
-            // prop, it indicates this component expects to handle v-model and
-            // it should not fallthrough.
-            // related: #1543, #1643, #1989
-            fallthroughAttrs = filterModelListeners(
-              fallthroughAttrs,
-              propsOptions
-            )
-          }
-
-          // 克隆并注入新的属性
-          root = cloneVNode(root, fallthroughAttrs)
-        } else if (__DEV__ && !accessedAttrs && root.type !== Comment) {
-          const allAttrs = Object.keys(attrs)
-          const eventAttrs: string[] = []
-          const extraAttrs: string[] = []
-          for (let i = 0, l = allAttrs.length; i < l; i++) {
-            const key = allAttrs[i]
-
-            // 是否为事件
-            if (isOn(key)) {
-              // ignore v-model handlers when they fail to fallthrough
-              // 除去v-model的事件
-              if (!isModelListener(key)) {
-                // remove `on`, lowercase first letter to reflect event casing
-                // accurately
-                eventAttrs.push(key[2].toLowerCase() + key.slice(3))
-              }
-
-              // 非事件
-            } else {
-              extraAttrs.push(key)
-            }
-          }
-
-          // 报错，属性透传到了fragment或文本节点上
-          if (extraAttrs.length) {
-            warn(
-              `Extraneous non-props attributes (` +
-                `${extraAttrs.join(', ')}) ` +
-                `were passed to component but could not be automatically inherited ` +
-                `because component renders fragment or text root nodes.`
-            )
-          }
-
-          // 报错，未定义对应的emits
-          if (eventAttrs.length) {
-            warn(
-              `Extraneous non-emits event listeners (` +
-                `${eventAttrs.join(', ')}) ` +
-                `were passed to component but could not be automatically inherited ` +
-                `because component renders fragment or text root nodes. ` +
-                `If the listener is intended to be a component custom event listener only, ` +
-                `declare it using the "emits" option.`
-            )
-          }
-        }
-      }
-    }
-
-    // 兼容
-    if (
-      __COMPAT__ &&
-      isCompatEnabled(DeprecationTypes.INSTANCE_ATTRS_CLASS_STYLE, instance) &&
-      vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT &&
-      root.shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.COMPONENT)
-    ) {
-      const { class: cls, style } = vnode.props || {}
-      if (cls || style) {
-        if (__DEV__ && inheritAttrs === false) {
-          warnDeprecation(
-            DeprecationTypes.INSTANCE_ATTRS_CLASS_STYLE,
-            instance,
-            getComponentName(instance.type)
-          )
-        }
-        root = cloneVNode(root, {
-          class: cls,
-          style: style
-        })
-      }
-    }
-
-    // inherit directives
-    // 继承指令
-    if (vnode.dirs) {
-      if (__DEV__ && !isElementRoot(root)) {
-        warn(
-          `Runtime directive used on component with non-element root node. ` +
-            `The directives will not function as intended.`
-        )
-      }
-      root.dirs = root.dirs ? root.dirs.concat(vnode.dirs) : vnode.dirs
-    }
-
-    // inherit transition data
-    // 继承过渡动画属性
-    if (vnode.transition) {
-      if (__DEV__ && !isElementRoot(root)) {
-        warn(
-          `Component inside <Transition> renders non-element root node ` +
-            `that cannot be animated.`
-        )
-      }
-      root.transition = vnode.transition
-    }
-
-    if (__DEV__ && setRoot) {
-      setRoot(root)
-    } else {
-      result = root
-    }
   } catch (err) {
     blockStack.length = 0
     handleError(err, instance, ErrorCodes.RENDER_FUNCTION)
     result = createVNode(Comment)
+  }
+
+  // attr merging
+  // in dev mode, comments are preserved, and it's possible for a template
+  // to have comments along side the root element which makes it a fragment
+  let root = result
+  let setRoot: ((root: VNode) => void) | undefined = undefined
+  if (
+    __DEV__ &&
+    result.patchFlag > 0 &&
+    result.patchFlag & PatchFlags.DEV_ROOT_FRAGMENT
+  ) {
+    ;[root, setRoot] = getChildRoot(result)
+  }
+
+  if (fallthroughAttrs && inheritAttrs !== false) {
+    const keys = Object.keys(fallthroughAttrs)
+    const { shapeFlag } = root
+    if (keys.length) {
+      if (shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.COMPONENT)) {
+        if (propsOptions && keys.some(isModelListener)) {
+          // If a v-model listener (onUpdate:xxx) has a corresponding declared
+          // prop, it indicates this component expects to handle v-model and
+          // it should not fallthrough.
+          // related: #1543, #1643, #1989
+          fallthroughAttrs = filterModelListeners(
+            fallthroughAttrs,
+            propsOptions
+          )
+        }
+        root = cloneVNode(root, fallthroughAttrs)
+      } else if (__DEV__ && !accessedAttrs && root.type !== Comment) {
+        const allAttrs = Object.keys(attrs)
+        const eventAttrs: string[] = []
+        const extraAttrs: string[] = []
+        for (let i = 0, l = allAttrs.length; i < l; i++) {
+          const key = allAttrs[i]
+          if (isOn(key)) {
+            // ignore v-model handlers when they fail to fallthrough
+            if (!isModelListener(key)) {
+              // remove `on`, lowercase first letter to reflect event casing
+              // accurately
+              eventAttrs.push(key[2].toLowerCase() + key.slice(3))
+            }
+          } else {
+            extraAttrs.push(key)
+          }
+        }
+        if (extraAttrs.length) {
+          warn(
+            `Extraneous non-props attributes (` +
+              `${extraAttrs.join(', ')}) ` +
+              `were passed to component but could not be automatically inherited ` +
+              `because component renders fragment or text root nodes.`
+          )
+        }
+        if (eventAttrs.length) {
+          warn(
+            `Extraneous non-emits event listeners (` +
+              `${eventAttrs.join(', ')}) ` +
+              `were passed to component but could not be automatically inherited ` +
+              `because component renders fragment or text root nodes. ` +
+              `If the listener is intended to be a component custom event listener only, ` +
+              `declare it using the "emits" option.`
+          )
+        }
+      }
+    }
+  }
+
+  if (
+    __COMPAT__ &&
+    isCompatEnabled(DeprecationTypes.INSTANCE_ATTRS_CLASS_STYLE, instance) &&
+    vnode.shapeFlag & ShapeFlags.STATEFUL_COMPONENT &&
+    root.shapeFlag & (ShapeFlags.ELEMENT | ShapeFlags.COMPONENT)
+  ) {
+    const { class: cls, style } = vnode.props || {}
+    if (cls || style) {
+      if (__DEV__ && inheritAttrs === false) {
+        warnDeprecation(
+          DeprecationTypes.INSTANCE_ATTRS_CLASS_STYLE,
+          instance,
+          getComponentName(instance.type)
+        )
+      }
+      root = cloneVNode(root, {
+        class: cls,
+        style: style
+      })
+    }
+  }
+
+  // inherit directives
+  if (vnode.dirs) {
+    if (__DEV__ && !isElementRoot(root)) {
+      warn(
+        `Runtime directive used on component with non-element root node. ` +
+          `The directives will not function as intended.`
+      )
+    }
+    root.dirs = root.dirs ? root.dirs.concat(vnode.dirs) : vnode.dirs
+  }
+  // inherit transition data
+  if (vnode.transition) {
+    if (__DEV__ && !isElementRoot(root)) {
+      warn(
+        `Component inside <Transition> renders non-element root node ` +
+          `that cannot be animated.`
+      )
+    }
+    root.transition = vnode.transition
+  }
+
+  if (__DEV__ && setRoot) {
+    setRoot(root)
+  } else {
+    result = root
   }
 
   // 还原当前渲染实例

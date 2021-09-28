@@ -846,6 +846,16 @@ function parseAttributes(
     // 解析属性，存入Set中
     const attr = parseAttribute(context, attributeNames)
 
+    // Trim whitespace between class
+    // https://github.com/vuejs/vue-next/issues/4251
+    if (
+      attr.type === NodeTypes.ATTRIBUTE &&
+      attr.value &&
+      attr.name === 'class'
+    ) {
+      attr.value.content = attr.value.content.replace(/\s+/g, ' ').trim()
+    }
+
     // 如果为开标签，则记录属性信息
     if (type === TagType.Start) {
       props.push(attr)
@@ -929,7 +939,7 @@ function parseAttribute(
   // 获取当前属性整体的位置信息
   const loc = getSelection(context, start)
 
-  if (!context.inVPre && /^(v-|:|\.|@|#)/.test(name)) {
+  if (!context.inVPre && /^(v-[A-Za-z0-9-]|:|\.|@|#)/.test(name)) {
     const match =
       /(?:^v-([a-z0-9-]+))?(?:(?::|^\.|^@|^#)(\[[^\]]+\]|[^\.]+))?(.+)?$/i.exec(
         name
@@ -973,10 +983,10 @@ function parseAttribute(
             context,
             ErrorCodes.X_MISSING_DYNAMIC_DIRECTIVE_ARGUMENT_END
           )
+          content = content.substr(1)
+        } else {
+          content = content.substr(1, content.length - 2)
         }
-
-        // 获取动态属性具体字段
-        content = content.substr(1, content.length - 2)
       } else if (isSlot) {
         // #1241 special case for v-slot: vuetify relies extensively on slot
         // names containing dots. v-slot doesn't have any modifiers and Vue 2.x
@@ -1049,6 +1059,11 @@ function parseAttribute(
       modifiers,
       loc
     }
+  }
+
+  // missing directive name or illegal directive name
+  if (!context.inVPre && startsWith(name, 'v-')) {
+    emitError(context, ErrorCodes.X_MISSING_DIRECTIVE_NAME)
   }
 
   return {
@@ -1205,11 +1220,8 @@ function parseInterpolation(
 function parseText(context: ParserContext, mode: TextModes): TextNode {
   __TEST__ && assert(context.source.length > 0)
 
-  // 默认解析到下面符号前
-  const endTokens = ['<', context.options.delimiters[0]]
-  if (mode === TextModes.CDATA) {
-    endTokens.push(']]>')
-  }
+  const endTokens =
+    mode === TextModes.CDATA ? [']]>'] : ['<', context.options.delimiters[0]]
 
   // 默认将之后全部内容视为文本
   let endIndex = context.source.length

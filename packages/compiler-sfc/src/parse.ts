@@ -9,7 +9,6 @@ import {
 import * as CompilerDOM from '@vue/compiler-dom'
 import { RawSourceMap, SourceMapGenerator } from 'source-map'
 import { TemplateCompiler } from './compileTemplate'
-import { Statement } from '@babel/types'
 import { parseCssVars } from './cssVars'
 import { createCache } from './cache'
 
@@ -41,29 +40,15 @@ export interface SFCScriptBlock extends SFCBlock {
   type: 'script'
   setup?: string | boolean
   bindings?: BindingMetadata
-  scriptAst?: Statement[]
-  scriptSetupAst?: Statement[]
-  ranges?: ScriptSetupTextRanges
+  /**
+   * import('\@babel/types').Statement
+   */
+  scriptAst?: any[]
+  /**
+   * import('\@babel/types').Statement
+   */
+  scriptSetupAst?: any[]
 }
-
-/**
- * Text range data for IDE support
- */
-export interface ScriptSetupTextRanges {
-  scriptBindings: TextRange[]
-  scriptSetupBindings: TextRange[]
-  propsTypeArg?: TextRange
-  propsRuntimeArg?: TextRange
-  emitsTypeArg?: TextRange
-  emitsRuntimeArg?: TextRange
-  withDefaultsArg?: TextRange
-}
-
-export interface TextRange {
-  start: number
-  end: number
-}
-
 export interface SFCStyleBlock extends SFCBlock {
   type: 'style'
   scoped?: boolean

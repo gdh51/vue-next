@@ -16,7 +16,8 @@ import { validateBrowserExpression } from '../validateExpression'
 import { hasScopeRef, isMemberExpression } from '../utils'
 import { TO_HANDLER_KEY } from '../runtimeHelpers'
 
-const fnExpRE = /^\s*([\w$_]+|\([^)]*?\))\s*=>|^\s*function(?:\s+[\w$]+)?\s*\(/
+const fnExpRE =
+  /^\s*([\w$_]+|(async\s*)?\([^)]*?\))\s*=>|^\s*(async\s+)?function(?:\s+[\w$]+)?\s*\(/
 
 export interface VOnDirectiveNode extends DirectiveNode {
   // v-on without arg is handled directly in ./transformElements.ts due to it affecting
@@ -86,8 +87,9 @@ export const transformOn: DirectiveTransform = (
   }
   let shouldCache: boolean = context.cacheHandlers && !exp && !context.inVOnce
   if (exp) {
+
     // 是否为a.b表达式
-    const isMemberExp = isMemberExpression(exp.content)
+    const isMemberExp = isMemberExpression(exp.content, context)
 
     // 不是函数和成员访问表达式
     const isInlineStatement = !(isMemberExp || fnExpRE.test(exp.content))

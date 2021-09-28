@@ -46,7 +46,10 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
     bindingType !== BindingTypes.SETUP_CONST
 
   // 空表达式，或非成员访问表达式(a.b)，报错
-  if (!expString.trim() || (!isMemberExpression(expString) && !maybeRef)) {
+  if (
+    !expString.trim() ||
+    (!isMemberExpression(expString, context) && !maybeRef)
+  ) {
     context.onError(
       createCompilerError(ErrorCodes.X_V_MODEL_MALFORMED_EXPRESSION, exp.loc)
     )
@@ -84,9 +87,9 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
     if (bindingType === BindingTypes.SETUP_REF) {
       // v-model used on known ref.
       assignmentExp = createCompoundExpression([
-        `${eventArg} => (`,
+        `${eventArg} => ((`,
         createSimpleExpression(rawExp, false, exp.loc),
-        `.value = $event)`
+        `).value = $event)`
       ])
     } else {
       // v-model used on a potentially ref binding in <script setup> inline mode.
@@ -96,18 +99,18 @@ export const transformModel: DirectiveTransform = (dir, node, context) => {
 
       // 创建赋值 复合表达式
       assignmentExp = createCompoundExpression([
-        `${eventArg} => (${context.helperString(IS_REF)}(${rawExp}) ? `,
+        `${eventArg} => (${context.helperString(IS_REF)}(${rawExp}) ? (`,
         createSimpleExpression(rawExp, false, exp.loc),
-        `.value = $event : ${altAssignment})`
+        `).value = $event : ${altAssignment})`
       ])
     }
 
     // 一般正常处理
   } else {
     assignmentExp = createCompoundExpression([
-      `${eventArg} => (`,
+      `${eventArg} => ((`,
       exp,
-      ` = $event)`
+      `) = $event)`
     ])
   }
 

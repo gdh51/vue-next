@@ -5,8 +5,7 @@ type Style = string | Record<string, string | string[]> | null
 
 export function patchStyle(el: Element, prev: Style, next: Style) {
   const style = (el as HTMLElement).style
-
-  // 无样式时，直接移除style
+  const currentDisplay = style.display
   if (!next) {
     el.removeAttribute('style')
 
@@ -14,18 +13,7 @@ export function patchStyle(el: Element, prev: Style, next: Style) {
   } else if (isString(next)) {
     // 前后样式的值不一样
     if (prev !== next) {
-      // 获取当前原始的display样式
-      const current = style.display
-
-      // 应用新的样式
       style.cssText = next
-      // indicates that the `display` of the element is controlled by `v-show`,
-      // so we always keep the current `display` value regardless of the `style` value,
-      // thus handing over control to `v-show`.
-      // 如果存在_vod则说明当前元素由v-show控制，则无视用户规则定义的display
-      if ('_vod' in el) {
-        style.display = current
-      }
     }
 
     // 对象形式时
@@ -44,6 +32,12 @@ export function patchStyle(el: Element, prev: Style, next: Style) {
         }
       }
     }
+  }
+  // indicates that the `display` of the element is controlled by `v-show`,
+  // so we always keep the current `display` value regardless of the `style` value,
+  // thus handing over control to `v-show`.
+  if ('_vod' in el) {
+    style.display = currentDisplay
   }
 }
 

@@ -23,32 +23,28 @@ export const transformSlotOutlet: NodeTransform = (node, context) => {
 
     const slotArgs: CallExpression['arguments'] = [
       context.prefixIdentifiers ? `_ctx.$slots` : `$slots`,
-      slotName
+      slotName,
+      '{}',
+      'undefined',
+      'true'
     ]
+    let expectedLen = 2
 
     if (slotProps) {
-      slotArgs.push(slotProps)
+      slotArgs[2] = slotProps
+      expectedLen = 3
     }
 
     // 具有fallback内容
     if (children.length) {
-      // 但不具有属性
-      if (!slotProps) {
-        slotArgs.push(`{}`)
-      }
-
-      slotArgs.push(createFunctionExpression([], children, false, false, loc))
+      slotArgs[3] = createFunctionExpression([], children, false, false, loc)
+      expectedLen = 4
     }
 
     if (context.scopeId && !context.slotted) {
-      if (!slotProps) {
-        slotArgs.push(`{}`)
-      }
-      if (!children.length) {
-        slotArgs.push(`undefined`)
-      }
-      slotArgs.push(`true`)
+      expectedLen = 5
     }
+    slotArgs.splice(expectedLen) // remove unused arguments
 
     // 生成调用表达式
     node.codegenNode = createCallExpression(

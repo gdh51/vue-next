@@ -54,36 +54,37 @@ export const transformFor = createStructuralDirectiveTransform(
   'for',
   (node, dir, context) => {
     const { helper, removeHelper } = context
-    return processFor(
-      node,
-      dir,
-      context,
-      // for容器节点
-      forNode => {
-        // create the loop render function expression now, and add the
-        // iterator on exit after all children have been traversed
-        // 创建renderList的JS调用表达式
-        const renderExp = createCallExpression(helper(RENDER_LIST), [
-          forNode.source
-        ]) as ForRenderListExpression
+    return processFor(node, dir, context, forNode => {
+      // create the loop render function expression now, and add the
+      // iterator on exit after all children have been traversed
+      const renderExp = createCallExpression(helper(RENDER_LIST), [
+        forNode.source
+      ]) as ForRenderListExpression
+      const memo = findDir(node, 'memo')
+      const keyProp = findProp(node, `key`)
+      const keyExp =
+        keyProp &&
+        (keyProp.type === NodeTypes.ATTRIBUTE
+          ? createSimpleExpression(keyProp.value!.content, true)
+          : keyProp.exp!)
+      const keyProperty = keyProp ? createObjectProperty(`key`, keyExp!) : null
 
-        // 查询遍历节点上是否标记v-memo
-        const memo = findDir(node, 'memo')
-
-        // 找到遍历的key
-        const keyProp = findProp(node, `key`)
-        const keyExp =
-          keyProp &&
-          (keyProp.type === NodeTypes.ATTRIBUTE
-            ? // 属性key
-              createSimpleExpression(keyProp.value!.content, true)
-            : // 指令key
-              keyProp.exp!)
-
-        // 为key创建对象属性表达式
-        const keyProperty = keyProp
-          ? createObjectProperty(`key`, keyExp!)
-          : null
+      if (
+        !__BROWSER__ &&
+        context.prefixIdentifiers &&
+        keyProperty &&
+        keyProp!.type !== NodeTypes.ATTRIBUTE
+      ) {
+        // #2085 process :key expression needs to be processed in order for it
+        // to behave consistently for <template v-for> and <div v-for>.
+        // In the case of `<template v-for>`, the node is discarded and never
+        // traversed so its key expression won't be processed by the normal
+        // transforms.
+        keyProperty.value = processExpression(
+          keyProperty.value as SimpleExpressionNode,
+          context
+        )
+      }
 
         // 非浏览器
         if (!__BROWSER__ && context.prefixIdentifiers && keyProperty) {

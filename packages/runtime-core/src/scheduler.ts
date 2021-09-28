@@ -1,5 +1,5 @@
 import { ErrorCodes, callWithErrorHandling } from './errorHandling'
-import { isArray } from '@vue/shared'
+import { isArray, NOOP } from '@vue/shared'
 import { ComponentInternalInstance, getComponentName } from './component'
 import { warn } from './warning'
 
@@ -180,13 +180,10 @@ function queueCb(
     // 为有激活队列时或激活队列不包含当前的effect时，将该effect添加到等待队列中
     if (
       !activeQueue ||
-      !activeQueue.includes(
-        cb,
 
-        // 如果当前effect允许重复调用，则从下一个effect处开始查找
-        // (这里表示重复调用的effect作为新的effect调用)
-        cb.allowRecurse ? index + 1 : index
-      )
+      // 如果当前effect允许重复调用，则从下一个effect处开始查找
+      // (这里表示重复调用的effect作为新的effect调用)
+      !activeQueue.includes(cb, cb.allowRecurse ? index + 1 : index)
     ) {
       pendingQueue.push(cb)
     }
@@ -334,12 +331,21 @@ function flushJobs(seen?: CountMap) {
   // 1. 按父 ——》 子更新组件；如果父组件未挂载元素，则跳过该effect的执行
   queue.sort((a, b) => getId(a) - getId(b))
 
+  // conditional usage of checkRecursiveUpdate must be determined out of
+  // try ... catch block since Rollup by default de-optimizes treeshaking
+  // inside try-catch. This can leave all warning code unshaked. Although
+  // they would get eventually shaken by a minifier like terser, some minifiers
+  // would fail to do that (e.g. https://github.com/evanw/esbuild/issues/1610)
+  const check = __DEV__
+    ? (job: SchedulerJob) => checkRecursiveUpdates(seen!, job)
+    : NOOP
+
   try {
     // 执行普通队列中的effect
     for (flushIndex = 0; flushIndex < queue.length; flushIndex++) {
       const job = queue[flushIndex]
       if (job && job.active !== false) {
-        if (__DEV__ && checkRecursiveUpdates(seen!, job)) {
+        if (__DEV__ && check(job)) {
           continue
         }
         // console.log(`running:`, job.id)

@@ -19,7 +19,10 @@ import {
   TemplateTextChildNode,
   DirectiveArguments,
   createVNodeCall,
-  ConstantTypes
+  ConstantTypes,
+  JSChildNode,
+  createFunctionExpression,
+  createBlockStatement
 } from '../ast'
 import {
   PatchFlags,
@@ -45,7 +48,8 @@ import {
   KEEP_ALIVE,
   SUSPENSE,
   UNREF,
-  GUARD_REACTIVE_PROPS
+  GUARD_REACTIVE_PROPS,
+  IS_REF
 } from '../runtimeHelpers'
 import {
   getInnerRange,
@@ -518,17 +522,21 @@ export function buildProps(
     // 静态属性
     if (prop.type === NodeTypes.ATTRIBUTE) {
       const { loc, name, value } = prop
-      let isStatic = true
-
-      // 当前属性为ref
+      let valueNode = createSimpleExpression(
+        value ? value.content : '',
+        true,
+        value ? value.loc : loc
+      ) as JSChildNode
       if (name === 'ref') {
         hasRef = true
         // in inline mode there is no setupState object, so we can't use string
         // keys to set the ref. Instead, we need to transform it to pass the
-        // acrtual ref instead.
-        // 非浏览器环境
-        if (!__BROWSER__ && context.inline) {
-          isStatic = false
+        // actual ref instead.
+        if (!__BROWSER__ && context.inline && value?.content) {
+          valueNode = createFunctionExpression(['_value', '_refs'])
+          valueNode.body = createBlockStatement(
+            processInlineRef(context, value.content)
+          )
         }
       }
 
@@ -556,13 +564,7 @@ export function buildProps(
             true,
             getInnerRange(loc, 0, name.length)
           ),
-
-          // 创建value ast
-          createSimpleExpression(
-            value ? value.content : '',
-            isStatic,
-            value ? value.loc : loc
-          )
+          valueNode
         )
       )
 
@@ -913,9 +915,7 @@ function dedupeProperties(properties: Property[]): Property[] {
 
     // 已存在的
     if (existing) {
-      // 合并属性
-      if (name === 'style' || name === 'class' || name.startsWith('on')) {
-        // 合并到一个数组ast
+      if (name === 'style' || name === 'class' || isOn(name)) {
         mergeAsArray(existing, prop)
       }
 
@@ -1002,4 +1002,31 @@ function stringifyDynamicPropNames(props: string[]): string {
 
 function isComponentTag(tag: string) {
   return tag[0].toLowerCase() + tag.slice(1) === 'component'
+}
+
+function processInlineRef(
+  context: TransformContext,
+  raw: string
+): JSChildNode[] {
+  const body = [createSimpleExpression(`_refs['${raw}'] = _value`)]
+  const { bindingMetadata, helperString } = context
+  const type = bindingMetadata[raw]
+  if (type === BindingTypes.SETUP_REF) {
+    body.push(createSimpleExpression(`${raw}.value = _value`))
+  } else if (type === BindingTypes.SETUP_MAYBE_REF) {
+    body.push(
+      createSimpleExpression(
+        `${helperString(IS_REF)}(${raw}) && (${raw}.value = _value)`
+      )
+    )
+  } else if (type === BindingTypes.SETUP_LET) {
+    body.push(
+      createSimpleExpression(
+        `${helperString(
+          IS_REF
+        )}(${raw}) ? ${raw}.value = _value : ${raw} = _value`
+      )
+    )
+  }
+  return body
 }
